@@ -137,9 +137,11 @@ def get_connection_schema(conf):
 
 
 def clean_connection_url(url):
-    if not isinstance(url, str):
+    # Fast path for non-str types
+    if type(url) is not str:
         return url
-    return re.sub(r'//([^:]+):[^@/]+@', r'//\1:********@', url)
+    # Use pre-compiled regex for faster substitution
+    return _conn_url_re.sub(r'//\1:********@', url)
 
 
 def get_connection_name(conf, schema):
@@ -210,3 +212,5 @@ def get_metadata_file_path(conf):
     file_name = '{}_{}_{}.dump'.format(short_name[:(50 + engine_length)], id_hash, params_id_hash)
 
     return os.path.join(settings.CACHE_METADATA_PATH, file_name)
+
+_conn_url_re = re.compile(r'//([^:]+):[^@/]+@')
