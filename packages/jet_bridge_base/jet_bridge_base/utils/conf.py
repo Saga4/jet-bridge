@@ -3,7 +3,6 @@ import os
 import re
 
 from jet_bridge_base import settings
-from jet_bridge_base.utils.common import merge
 from jet_bridge_base.utils.crypt import get_sha256_hash
 from jet_bridge_base.utils.text import clean_alphanumeric
 
@@ -124,7 +123,11 @@ def get_connection_params_id(conf):
 
 
 def is_tunnel_connection(conf):
-    return all(map(lambda x: conf.get(x), ['ssh_host', 'ssh_port', 'ssh_user', 'ssh_private_key']))
+    # Inline the keys to avoid constructing a list every call, and avoid lambda/map
+    try:
+        return (conf['ssh_host'] and conf['ssh_port'] and conf['ssh_user'] and conf['ssh_private_key'])
+    except KeyError:
+        return False
 
 
 def get_connection_schema(conf):
@@ -143,31 +146,40 @@ def clean_connection_url(url):
 
 
 def get_connection_name(conf, schema):
-    if conf.get('engine') == 'mongo':
-        url = str(conf.get('url'))
-
-        connection_name = [url]
-
-        if not url.endswith('/'):
-            connection_name.append('/')
-
-        connection_name.append(conf.get('name') or '')
-
-        return ''.join(connection_name)
+    engine = conf.get('engine')
+    if engine == 'mongo':
+        # Cache these lookups
+        url = conf.get('url')
+        name = conf.get('name')
+        
+        # Fast string joining, not accumulating in a list
+        s = str(url)
+        if not s.endswith('/'):
+            s += '/'
+        if name:
+            s += name
+        else:
+            s += ''
+        return s
     else:
         from jet_bridge_base.db_types.sql import sql_build_engine_url
 
         password_token = '__JET_DB_PASS__'
-        log_conf = merge(merge({}, conf), {'password': password_token})
-
+        # Merge in one go, update is faster and preserves the 'conf' reference
+        log_conf = dict(conf)
+        log_conf['password'] = password_token
+        
         connection_name = sql_build_engine_url(log_conf)
         if connection_name:
             connection_name = connection_name.replace(password_token, '********')
         if schema:
-            connection_name += ':{}'.format(schema)
+            connection_name += ':' + schema
+        # cache lookups for performance
         if is_tunnel_connection(conf):
-            connection_name += ' (via {}@{}:{})'.format(conf.get('ssh_user'), conf.get('ssh_host'), conf.get('ssh_port'))
-
+            ssh_user = conf.get('ssh_user')
+            ssh_host = conf.get('ssh_host')
+            ssh_port = conf.get('ssh_port')
+            connection_name += f' (via {ssh_user}@{ssh_host}:{ssh_port})'
         return connection_name
 
 
