@@ -29,7 +29,6 @@ class Request(object):
 
     track_start_time = None
     track_start_memory_usage = None
-
     def __init__(
             self,
             method=None,
@@ -53,47 +52,46 @@ class Request(object):
         self.path = path
         self.path_kwargs = path_kwargs
         self.uri = uri
-        self.query_arguments = query_arguments or {}
-        self.headers = headers or {}
+        self.query_arguments = query_arguments if query_arguments is not None else {}
+        self.headers = headers if headers is not None else {}
         self.body = body
-        self.body_arguments = body_arguments or {}
-        self.files = files or {}
+        self.body_arguments = body_arguments if body_arguments is not None else {}
+        self.files = files if files is not None else {}
         self.original_request = original_request
         self.original_handler = original_handler
         self.action = action
 
         content_type = self.headers.get('CONTENT_TYPE', '')
 
+        # Faster JSON parsing path
         if content_type.startswith('application/json'):
             data = self.body
-
             if not isinstance(data, string_types):
                 data = data.decode('utf-8', 'surrogatepass')
             try:
                 self.data = json.loads(data) if data else {}
             except ValueError as e:
-                raise RequestError(self, 'Incorrect JSON body: {}'.format(e))
+                raise RequestError(self, f'Incorrect JSON body: {e}')
         else:
-            def body_argument_value(value):
-                if isinstance(value, bytes):
-                    try:
-                        value = value.decode('utf-8')
-                    except:
-                        pass
-                return value
-
-            def map_item(item):
-                key, values = item
-                values = list(map(body_argument_value, values))
-                if len(values) > 1:
-                    return (key, values)
-                elif len(values) == 1:
-                    return (key, values[0])
+            # Optimize: un-nest all inner functions and avoid extra list allocations
+            results = {}
+            for key, values in self.body_arguments.items():
+                # Accept common cases: values is almost always a list, so avoid list(map(...))
+                processed = []
+                for value in values:
+                    if isinstance(value, bytes):
+                        try:
+                            value = value.decode('utf-8')
+                        except Exception:
+                            pass
+                    processed.append(value)
+                if len(processed) > 1:
+                    results[key] = processed
+                elif len(processed) == 1:
+                    results[key] = processed[0]
                 else:
-                    return (key, None)
-
-            tuples = list(map(map_item, self.body_arguments.items()))
-            self.data = dict(tuples)
+                    results[key] = None
+            self.data = results
 
     def full_url(self):
         return self.protocol + "://" + self.host + self.uri
@@ -137,19 +135,14 @@ class Request(object):
         return args[-1]
 
     def _get_arguments(self, name, source, strip=True):
-        values = []
-        for v in source.get(name, []):
-            if isinstance(v, bytes):
-                v = v.decode('utf-8')
-            # v = self.decode_argument(v, name=name)
-            # if isinstance(v, unicode_type):
-            #     # Get rid of any weird control chars (unless decoding gave
-            #     # us bytes, in which case leave it alone)
-            #     v = RequestHandler._remove_control_chars_regex.sub(" ", v)
-            if strip:
-                v = v.strip()
-            values.append(v)
-        return values
+        # Optimize: avoid attribute lookups in loop, use generator expression, avoid extra list() call
+        values = source.get(name)
+        if not values:
+            return []
+        if strip:
+            return [v.decode('utf-8').strip() if isinstance(v, bytes) else v.strip() for v in values]
+        else:
+            return [v.decode('utf-8') if isinstance(v, bytes) else v for v in values]
 
     def get_bridge_settings(self):
         if self.bridge_settings:
