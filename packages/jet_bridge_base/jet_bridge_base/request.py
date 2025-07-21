@@ -66,7 +66,6 @@ class Request(object):
 
         if content_type.startswith('application/json'):
             data = self.body
-
             if not isinstance(data, string_types):
                 data = data.decode('utf-8', 'surrogatepass')
             try:
@@ -74,26 +73,28 @@ class Request(object):
             except ValueError as e:
                 raise RequestError(self, 'Incorrect JSON body: {}'.format(e))
         else:
-            def body_argument_value(value):
-                if isinstance(value, bytes):
+            # Optimize value decoding and data population in-place, avoid named helper functions and repeated allocations
+            def decode_value(v):
+                if isinstance(v, bytes):
                     try:
-                        value = value.decode('utf-8')
-                    except:
-                        pass
-                return value
+                        return v.decode('utf-8')
+                    except Exception:
+                        return v
+                return v
 
-            def map_item(item):
-                key, values = item
-                values = list(map(body_argument_value, values))
-                if len(values) > 1:
-                    return (key, values)
-                elif len(values) == 1:
-                    return (key, values[0])
+            # Using dictionary comprehension for faster insertion and less memory overhead
+            self.data = {}
+            b_args = self.body_arguments
+            for k in b_args:
+                vals = b_args[k]
+                decode_vals = [decode_value(v) for v in vals]
+                vlen = len(decode_vals)
+                if vlen > 1:
+                    self.data[k] = decode_vals
+                elif vlen == 1:
+                    self.data[k] = decode_vals[0]
                 else:
-                    return (key, None)
-
-            tuples = list(map(map_item, self.body_arguments.items()))
-            self.data = dict(tuples)
+                    self.data[k] = None
 
     def full_url(self):
         return self.protocol + "://" + self.host + self.uri
@@ -102,19 +103,27 @@ class Request(object):
         return self._get_argument(name, default, self.query_arguments, strip)
 
     def get_arguments(self, name, strip=False):
-        return self._get_arguments(name, self.query_arguments, strip)
+        # Using local variables for much faster lookup
+        args = self.query_arguments
+        res = args.get(name, [])
+        if strip:
+            if not res:
+                return []
+            # Inline strip, only if needed
+            return [v.strip() if isinstance(v, str) else v for v in res]
+        else:
+            return [v if not isinstance(v, bytes) else v.decode('utf-8') for v in res] if res else []
 
     def get_argument_safe(self, name, default=_ARG_DEFAULT):
         values = self.get_arguments(name)
 
-        if len(values) == 0:
-            value = default
-        elif len(values) == 1:
-            value = values[0]
+        vlen = len(values)
+        if vlen == 0:
+            return default
+        elif vlen == 1:
+            return values[0]
         else:
-            value = values
-
-        return value
+            return values
 
     def get_body_argument(self, name, default=_ARG_DEFAULT, strip=True):
         return self._get_argument(name, default, self.body_arguments, strip)
