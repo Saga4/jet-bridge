@@ -137,9 +137,9 @@ def get_connection_schema(conf):
 
 
 def clean_connection_url(url):
-    if not isinstance(url, str):
+    if type(url) is not str:
         return url
-    return re.sub(r'//([^:]+):[^@/]+@', r'//\1:********@', url)
+    return _url_clean_re.sub(r'//\1:********@', url)
 
 
 def get_connection_name(conf, schema):
@@ -174,20 +174,25 @@ def get_connection_name(conf, schema):
 def get_connection_short_name_parts(conf):
     result = []
 
-    if conf.get('url'):
-        result.append(clean_connection_url(str(conf.get('url'))))
+    url = conf.get('url')
+    if url:
+        # Only cast to str if needed
+        result.append(clean_connection_url(url if type(url) is str else str(url)))
     else:
-        if conf.get('engine'):
-            result.append(str(conf.get('engine')))
+        # Avoid repeated .get by caching in locals
+        engine = conf.get('engine')
+        host = conf.get('host')
+        port = conf.get('port')
+        if engine:
+            result.append(engine if type(engine) is str else str(engine))
+        if host:
+            result.append(host if type(host) is str else str(host))
+        if port:
+            result.append(port if type(port) is str else str(port))
 
-        if conf.get('host'):
-            result.append(str(conf.get('host')))
-
-        if conf.get('port'):
-            result.append(str(conf.get('port')))
-
-    if conf.get('name'):
-        result.append(str(conf.get('name')))
+    name = conf.get('name')
+    if name:
+        result.append(name if type(name) is str else str(name))
 
     return result
 
@@ -210,3 +215,5 @@ def get_metadata_file_path(conf):
     file_name = '{}_{}_{}.dump'.format(short_name[:(50 + engine_length)], id_hash, params_id_hash)
 
     return os.path.join(settings.CACHE_METADATA_PATH, file_name)
+
+_url_clean_re = re.compile(r'//([^:]+):[^@/]+@')
