@@ -1,6 +1,7 @@
 import json
 import os
 import re
+from operator import attrgetter
 
 from jet_bridge_base import settings
 from jet_bridge_base.utils.common import merge
@@ -9,33 +10,45 @@ from jet_bridge_base.utils.text import clean_alphanumeric
 
 
 def get_settings_conf():
+    # Retrieve all needed attributes in a single call for improved performance
+    (
+        DATABASE_ENGINE, DATABASE_URL, DATABASE_HOST, DATABASE_PORT,
+        DATABASE_NAME, DATABASE_USER, DATABASE_PASSWORD, DATABASE_EXTRA,
+        DATABASE_CONNECTIONS, DATABASE_CONNECTIONS_OVERFLOW, DATABASE_ONLY,
+        DATABASE_EXCEPT, DATABASE_SCHEMA, DATABASE_TIMEZONE, DATABASE_RLS_TYPE,
+        DATABASE_RLS_SSO, DATABASE_RLS_USER_PROPERTY, DATABASE_SSL_CA,
+        DATABASE_SSL_CERT, DATABASE_SSL_KEY, DATABASE_SSH_HOST,
+        DATABASE_SSH_PORT, DATABASE_SSH_USER, DATABASE_SSH_PRIVATE_KEY,
+        PROJECT, TOKEN
+    ) = _settings_getter(settings)
+
     return {
-        'engine': settings.DATABASE_ENGINE,
-        'url': settings.DATABASE_URL,
-        'host': settings.DATABASE_HOST,
-        'port': settings.DATABASE_PORT,
-        'name': settings.DATABASE_NAME,
-        'user': settings.DATABASE_USER,
-        'password': settings.DATABASE_PASSWORD,
-        'extra': settings.DATABASE_EXTRA,
-        'connections': settings.DATABASE_CONNECTIONS,
-        'connections_overflow': settings.DATABASE_CONNECTIONS_OVERFLOW,
-        'only': settings.DATABASE_ONLY,
-        'except': settings.DATABASE_EXCEPT,
-        'schema': settings.DATABASE_SCHEMA,
-        'timezone': settings.DATABASE_TIMEZONE,
-        'rls_type': settings.DATABASE_RLS_TYPE,
-        'rls_sso': settings.DATABASE_RLS_SSO,
-        'rls_user_property': settings.DATABASE_RLS_USER_PROPERTY,
-        'ssl_ca': settings.DATABASE_SSL_CA,
-        'ssl_cert': settings.DATABASE_SSL_CERT,
-        'ssl_key': settings.DATABASE_SSL_KEY,
-        'ssh_host': settings.DATABASE_SSH_HOST,
-        'ssh_port': settings.DATABASE_SSH_PORT,
-        'ssh_user': settings.DATABASE_SSH_USER,
-        'ssh_private_key': settings.DATABASE_SSH_PRIVATE_KEY,
-        'project': settings.PROJECT,
-        'token': settings.TOKEN
+        'engine': DATABASE_ENGINE,
+        'url': DATABASE_URL,
+        'host': DATABASE_HOST,
+        'port': DATABASE_PORT,
+        'name': DATABASE_NAME,
+        'user': DATABASE_USER,
+        'password': DATABASE_PASSWORD,
+        'extra': DATABASE_EXTRA,
+        'connections': DATABASE_CONNECTIONS,
+        'connections_overflow': DATABASE_CONNECTIONS_OVERFLOW,
+        'only': DATABASE_ONLY,
+        'except': DATABASE_EXCEPT,
+        'schema': DATABASE_SCHEMA,
+        'timezone': DATABASE_TIMEZONE,
+        'rls_type': DATABASE_RLS_TYPE,
+        'rls_sso': DATABASE_RLS_SSO,
+        'rls_user_property': DATABASE_RLS_USER_PROPERTY,
+        'ssl_ca': DATABASE_SSL_CA,
+        'ssl_cert': DATABASE_SSL_CERT,
+        'ssl_key': DATABASE_SSL_KEY,
+        'ssh_host': DATABASE_SSH_HOST,
+        'ssh_port': DATABASE_SSH_PORT,
+        'ssh_user': DATABASE_SSH_USER,
+        'ssh_private_key': DATABASE_SSH_PRIVATE_KEY,
+        'project': PROJECT,
+        'token': TOKEN
     }
 
 
@@ -210,3 +223,32 @@ def get_metadata_file_path(conf):
     file_name = '{}_{}_{}.dump'.format(short_name[:(50 + engine_length)], id_hash, params_id_hash)
 
     return os.path.join(settings.CACHE_METADATA_PATH, file_name)
+
+_settings_getter = attrgetter(
+    'DATABASE_ENGINE',
+    'DATABASE_URL',
+    'DATABASE_HOST',
+    'DATABASE_PORT',
+    'DATABASE_NAME',
+    'DATABASE_USER',
+    'DATABASE_PASSWORD',
+    'DATABASE_EXTRA',
+    'DATABASE_CONNECTIONS',
+    'DATABASE_CONNECTIONS_OVERFLOW',
+    'DATABASE_ONLY',
+    'DATABASE_EXCEPT',
+    'DATABASE_SCHEMA',
+    'DATABASE_TIMEZONE',
+    'DATABASE_RLS_TYPE',
+    'DATABASE_RLS_SSO',
+    'DATABASE_RLS_USER_PROPERTY',
+    'DATABASE_SSL_CA',
+    'DATABASE_SSL_CERT',
+    'DATABASE_SSL_KEY',
+    'DATABASE_SSH_HOST',
+    'DATABASE_SSH_PORT',
+    'DATABASE_SSH_USER',
+    'DATABASE_SSH_PRIVATE_KEY',
+    'PROJECT',
+    'TOKEN',
+)
