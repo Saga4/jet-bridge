@@ -1,5 +1,6 @@
 def get_table_name(metadata, table):
-    if table.schema and table.schema != metadata.schema:
-        return '{}.{}'.format(table.schema, table.name)
+    schema = table.schema       # cache attribute lookup
+    if schema and schema != metadata.schema:
+        return f'{schema}.{table.name}'   # faster than .format()
     else:
         return str(table.name)
