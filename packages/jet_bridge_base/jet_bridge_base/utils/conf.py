@@ -124,7 +124,7 @@ def get_connection_params_id(conf):
 
 
 def is_tunnel_connection(conf):
-    return all(map(lambda x: conf.get(x), ['ssh_host', 'ssh_port', 'ssh_user', 'ssh_private_key']))
+    return bool(conf.get('ssh_host') and conf.get('ssh_port') and conf.get('ssh_user') and conf.get('ssh_private_key'))
 
 
 def get_connection_schema(conf):
