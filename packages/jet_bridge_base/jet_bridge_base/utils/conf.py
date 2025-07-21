@@ -128,11 +128,13 @@ def is_tunnel_connection(conf):
 
 
 def get_connection_schema(conf):
-    schema = conf.get('schema') if conf.get('schema') and conf.get('schema') != '' else None
-
-    if not schema and str(conf.get('engine', '')).startswith('mssql'):
-        schema = 'dbo'
-
+    schema = conf.get('schema')
+    if not schema:
+        engine = conf.get('engine', '')
+        if isinstance(engine, str) and engine.startswith('mssql'):
+            schema = 'dbo'
+        else:
+            schema = None
     return schema
 
 
