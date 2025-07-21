@@ -66,34 +66,35 @@ class Request(object):
 
         if content_type.startswith('application/json'):
             data = self.body
-
             if not isinstance(data, string_types):
                 data = data.decode('utf-8', 'surrogatepass')
-            try:
-                self.data = json.loads(data) if data else {}
-            except ValueError as e:
-                raise RequestError(self, 'Incorrect JSON body: {}'.format(e))
+            if not data:
+                self.data = {}
+            else:
+                try:
+                    self.data = json.loads(data)
+                except ValueError as e:
+                    raise RequestError(self, 'Incorrect JSON body: {}'.format(e))
         else:
-            def body_argument_value(value):
-                if isinstance(value, bytes):
+            # Aggressively avoid per-call lambda and function objects
+            def decode_bytes(val):
+                if isinstance(val, bytes):
                     try:
-                        value = value.decode('utf-8')
-                    except:
-                        pass
-                return value
-
-            def map_item(item):
-                key, values = item
-                values = list(map(body_argument_value, values))
-                if len(values) > 1:
-                    return (key, values)
-                elif len(values) == 1:
-                    return (key, values[0])
+                        return val.decode('utf-8')
+                    except Exception:
+                        return val
+                return val
+            bargs = self.body_arguments
+            data = {}
+            for key, values in bargs.items():
+                n = len(values)
+                if n == 0:
+                    data[key] = None
+                elif n == 1:
+                    data[key] = decode_bytes(values[0])
                 else:
-                    return (key, None)
-
-            tuples = list(map(map_item, self.body_arguments.items()))
-            self.data = dict(tuples)
+                    data[key] = [decode_bytes(v) for v in values]
+            self.data = data
 
     def full_url(self):
         return self.protocol + "://" + self.host + self.uri
@@ -137,19 +138,27 @@ class Request(object):
         return args[-1]
 
     def _get_arguments(self, name, source, strip=True):
-        values = []
-        for v in source.get(name, []):
-            if isinstance(v, bytes):
-                v = v.decode('utf-8')
-            # v = self.decode_argument(v, name=name)
-            # if isinstance(v, unicode_type):
-            #     # Get rid of any weird control chars (unless decoding gave
-            #     # us bytes, in which case leave it alone)
-            #     v = RequestHandler._remove_control_chars_regex.sub(" ", v)
-            if strip:
-                v = v.strip()
-            values.append(v)
-        return values
+        # Optimized: eliminate method lookups, use tight for loop
+        # Profiling shows most time spent in decoding and .strip()
+        get = source.get
+        values_src = get(name, [])
+        # Preallocate result list if possible
+        out_len = len(values_src)
+        if out_len == 0:
+            return []
+        result = []
+        append = result.append
+        if strip:
+            for v in values_src:
+                if isinstance(v, bytes):
+                    v = v.decode('utf-8')
+                append(v.strip())
+        else:
+            for v in values_src:
+                if isinstance(v, bytes):
+                    v = v.decode('utf-8')
+                append(v)
+        return result
 
     def get_bridge_settings(self):
         if self.bridge_settings:
