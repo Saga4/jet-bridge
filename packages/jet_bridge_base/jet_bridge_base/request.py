@@ -74,26 +74,20 @@ class Request(object):
             except ValueError as e:
                 raise RequestError(self, 'Incorrect JSON body: {}'.format(e))
         else:
-            def body_argument_value(value):
+            # Optimized: Use a single generator expression to process body_arguments
+            def decode_value(value):
                 if isinstance(value, bytes):
                     try:
-                        value = value.decode('utf-8')
-                    except:
-                        pass
+                        return value.decode('utf-8')
+                    except Exception:
+                        return value
                 return value
 
-            def map_item(item):
-                key, values = item
-                values = list(map(body_argument_value, values))
-                if len(values) > 1:
-                    return (key, values)
-                elif len(values) == 1:
-                    return (key, values[0])
-                else:
-                    return (key, None)
-
-            tuples = list(map(map_item, self.body_arguments.items()))
-            self.data = dict(tuples)
+            self.data = dict(
+                (key, [decode_value(v) for v in values] if len(values) > 1
+                      else decode_value(values[0]) if values else None)
+                for key, values in self.body_arguments.items()
+            )
 
     def full_url(self):
         return self.protocol + "://" + self.host + self.uri
