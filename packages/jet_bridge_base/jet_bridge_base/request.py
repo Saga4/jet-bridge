@@ -2,10 +2,8 @@ import json
 import os
 import tempfile
 import time
-from json import JSONDecodeError
 
 from jet_bridge_base.exceptions.request_error import RequestError
-from jet_bridge_base.exceptions.validation_error import ValidationError
 from jet_bridge_base.utils.conf import get_conf
 from jet_bridge_base.utils.crypt import get_sha256_hash
 from jet_bridge_base.utils.process import get_memory_usage
@@ -99,7 +97,12 @@ class Request(object):
         return self.protocol + "://" + self.host + self.uri
 
     def get_argument(self, name, default=_ARG_DEFAULT, strip=True):
-        return self._get_argument(name, default, self.query_arguments, strip)
+        args = self._get_arguments(name, self.query_arguments, strip=strip)
+        if not args:
+            if default is _ARG_DEFAULT:
+                raise MissingArgumentError(name)
+            return default
+        return args[-1]
 
     def get_arguments(self, name, strip=False):
         return self._get_arguments(name, self.query_arguments, strip)
