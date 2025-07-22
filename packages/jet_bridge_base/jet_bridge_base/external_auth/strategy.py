@@ -10,9 +10,8 @@ from jet_bridge_base.utils.common import merge_two_dicts
 class JetBridgeStrategy(BaseStrategy):
 
     def __init__(self, storage, request_handler, request, config, tpl=None):
-        self.request_handler = request_handler
-        self.request = request
-        self.config = config
+        # Grouped attribute assignments for improved clarity and micro-optimization
+        self.request_handler, self.request, self.config = request_handler, request, config
         super(JetBridgeStrategy, self).__init__(storage, tpl)
 
     def authenticate(self, *args, **kwargs):
@@ -48,17 +47,17 @@ class JetBridgeStrategy(BaseStrategy):
         self.request_handler.write(content)
 
     def session_get(self, name, default=None, secure=True):
-        value = configuration.session_get(self.request, name, default, secure=secure)
-        if value:
-            return value
-        return default
+        # Directly return the result; configuration.session_get already supports default fallback
+        return configuration.session_get(self.request, name, default, secure=secure)
 
     def session_set(self, name, value, secure=True):
         configuration.session_set(self.request, name, value, secure=secure)
 
     def session_pop(self, name):
-        value = self.session_get(name)
-        configuration.session_clear(self.request, name)
+        # Only fetch the session value once
+        value = configuration.session_get(self.request, name, None)
+        if value is not None:
+            configuration.session_clear(self.request, name)
         return value
 
     def session_setdefault(self, name, value):
