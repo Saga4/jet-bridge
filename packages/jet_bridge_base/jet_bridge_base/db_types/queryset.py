@@ -295,26 +295,26 @@ def get_sql_group_func_lookup(session, lookup_type, lookup_param, column):
 
 
 def get_mongo_group_func_lookup(lookup_type, lookup_param, column):
+    # Fast membership check instead of lambda+map+any
     if lookup_type == 'auto':
-        if any(map(lambda x: column.type == x, (data_types.DATE, data_types.DATE_TIME))):
+        col_type = column.type
+        if col_type is data_types.DATE or col_type is data_types.DATE_TIME:
             lookup_type = 'date'
             lookup_param = 'day'
 
-    try:
-        if lookup_type == 'date':
-            date_group = lookup_param or 'day'
-
-            if date_group in isoformat_options:
-                return {'$dateToString': {'format': isoformat_options[date_group], 'date': '${}'.format(column.name)}}
-        elif lookup_type == 'plain' or lookup_type == 'auto':
-            return '${}'.format(column.name)
-    except IndexError:
-        pass
+    if lookup_type == 'date':
+        date_group = lookup_param or 'day'
+        opts = isoformat_options
+        if date_group in opts:
+            # f-string for speed
+            return {'$dateToString': {'format': opts[date_group], 'date': f'${column.name}'}}
+    elif lookup_type == 'plain' or lookup_type == 'auto':
+        return f'${column.name}'
 
     if lookup_type:
-        print('Unsupported lookup: {}'.format(lookup_type))
+        print(f'Unsupported lookup: {lookup_type}')
 
-    return '${}'.format(column.name)
+    return f'${column.name}'
 
 
 def queryset_group(Model, qs, value):
