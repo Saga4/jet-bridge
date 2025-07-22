@@ -87,10 +87,15 @@ class StatusView(BaseAPIView):
         if not tunnel:
             return
 
+        # Use local variables and f-strings for performance
+        lh = tunnel.local_bind_host
+        lp = tunnel.local_bind_port
+        sh = tunnel.ssh_host
+        sp = tunnel.ssh_port
         return {
             'is_active': tunnel.is_active,
-            'local_address': '{}:{}'.format(tunnel.local_bind_host, tunnel.local_bind_port),
-            'remote_address': '{}:{}'.format(tunnel.ssh_host, tunnel.ssh_port)
+            'local_address': f'{lh}:{lp}',
+            'remote_address': f'{sh}:{sp}'
         }
 
     def map_connection(self, connection):
@@ -143,17 +148,18 @@ class StatusView(BaseAPIView):
         }
 
     def map_pending_connection(self, pending_connection):
-        tunnel = self.map_tunnel(pending_connection.get('tunnel'))
-
+        tunnel_dict = self.map_tunnel(pending_connection.get('tunnel'))
+        # Use local variables for hot keys
+        pc = pending_connection
         return {
-            'id': pending_connection['id'],
-            'name': pending_connection['name'],
-            'project': pending_connection.get('project'),
-            'token': pending_connection.get('token'),
-            'init_start': pending_connection.get('init_start'),
-            'tables_processed': pending_connection.get('tables_processed', 0),
-            'tables_total': pending_connection.get('tables_total'),
-            'tunnel': tunnel
+            'id': pc['id'],
+            'name': pc['name'],
+            'project': pc.get('project'),
+            'token': pc.get('token'),
+            'init_start': pc.get('init_start'),
+            'tables_processed': pc.get('tables_processed', 0),  # Inline default
+            'tables_total': pc.get('tables_total'),
+            'tunnel': tunnel_dict
         }
 
     def get(self, request, *args, **kwargs):
