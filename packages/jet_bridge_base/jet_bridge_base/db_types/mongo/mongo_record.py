@@ -32,7 +32,7 @@ class MongoRecord(object):
         return object.__getattribute__(self, 'meta')
 
     def is_create_pending(self):
-        return object.__getattribute__(self, 'create_pending')
+        return self.create_pending
 
     def mark_create(self):
         object.__setattr__(self, 'create_pending', True)
