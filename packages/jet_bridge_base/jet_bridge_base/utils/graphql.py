@@ -157,30 +157,34 @@ def apply_dynamic_type(func, *arg, **kwargs):
 class GraphQLSchemaGenerator(object):
     def __init__(self, base62=False):
         self.base62 = base62
-        self.relationships_by_name = dict()
-        self.relationships_by_clean_name = dict()
-        self.model_filters_types = dict()
-        self.model_filters_field_types = dict()
-        self.model_filters_relationship_types = dict()
-        self.model_lookups_types = dict()
-        self.model_lookups_field_types = dict()
-        self.model_lookups_relationship_types = dict()
-        self.model_sort_types = dict()
+        self.relationships_by_name = {}
+        self.relationships_by_clean_name = {}
+        self.model_filters_types = {}
+        self.model_filters_field_types = {}
+        self.model_filters_relationship_types = {}
+        self.model_lookups_types = {}
+        self.model_lookups_field_types = {}
+        self.model_lookups_relationship_types = {}
+        self.model_sort_types = {}
 
     def clean_name(self, name):
         if self.base62:
-            if name == '':
+            if not name:
                 return ''
-            elif re.match(r'^[_a-zA-Z][_a-zA-Z0-9]*$', name) and name not in ['_meta', 'Meta']:
+            # Check for valid identifier and not in meta names
+            if _REGEX_IDENTIFIER.match(name) and name not in _META_NAMES:
                 return name
-            else:
-                name_base62 = utf8_to_base62(name)
-                return '__BASE62__{}'.format(name_base62)
+            # encode with base62
+            return '__BASE62__{}'.format(utf8_to_base62(name))
         else:
-            if name == '_meta' or name == 'Meta':
+            if name in _META_NAMES:
                 return '__meta'
-            name = re.sub(r'[^_a-zA-Z0-9]', r'_', name)
-            name = re.sub(r'^(\d)', r'_\1', name)
+            # Replace unwanted characters and handle leading digits
+            # Using compiled regexes for faster repeated calls
+            name = _REGEX_NON_IDENTIFIER.sub('_', name)
+            # Only check for digit-at-start if it's possible, i.e. name is not empty and starts with digit
+            if name and name[0].isdigit():
+                name = '_' + name
             return name
 
     def clean_keys(self, obj):
@@ -1032,3 +1036,11 @@ class GraphQLSchemaGenerator(object):
     def get_schema(self, request, draft, before_resolve=None, on_progress_updated=None):
         Query = self.get_query_type(request, draft, before_resolve, on_progress_updated)
         return graphene.Schema(query=Query, auto_camelcase=False)
+
+_REGEX_IDENTIFIER = re.compile(r'^[_a-zA-Z][_a-zA-Z0-9]*$')
+
+_REGEX_NON_IDENTIFIER = re.compile(r'[^_a-zA-Z0-9]')
+
+_REGEX_DIGIT_START = re.compile(r'^(\d)')
+
+_META_NAMES = {'_meta', 'Meta'}
