@@ -51,12 +51,12 @@ class SentryController(object):
         self.sentry_sdk.set_context(name, value)
 
     def capture_exception(self, exc):
-        logger.exception(exc)
-
-        if not self.sentry_sdk:
+        sentry_sdk = getattr(self, 'sentry_sdk', None)
+        if not sentry_sdk:
             return
 
-        self.sentry_sdk.capture_exception(exc)
+        logger.exception(exc)
+        sentry_sdk.capture_exception(exc)
 
     def capture_message(self, message):
         logger.error(message)
