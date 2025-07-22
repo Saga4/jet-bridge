@@ -236,6 +236,9 @@ class Filter(object):
 
     def filter(self, qs, value):
         value = self.clean_value(value)
+        # Avoid unnecessary logic if value is empty
         if value in EMPTY_VALUES:
             return qs
-        return self.apply_lookup(qs, value)
+        # Inline the apply_lookup logic to avoid extra function call
+        criterion = self.get_lookup_criterion(qs, value)
+        return qs.filter(criterion)
