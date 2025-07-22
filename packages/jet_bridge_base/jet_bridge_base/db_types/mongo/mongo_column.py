@@ -13,9 +13,10 @@ class MongoColumn(object):
         self.autoincrement = autoincrement
         self.default = default
         self.server_default = server_default
-        self.foreign_keys = foreign_keys or list()
+        # Avoid unnecessary object creation and unexpected behavior with falsy-but-not-None
+        self.foreign_keys = foreign_keys if foreign_keys is not None else []
         self.comment = comment
-        self.params = params or dict()
+        self.params = params if params is not None else {}
 
     @staticmethod
     def deserialize(table, obj):
