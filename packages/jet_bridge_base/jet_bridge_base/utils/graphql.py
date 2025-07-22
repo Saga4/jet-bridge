@@ -313,13 +313,17 @@ class GraphQLSchemaGenerator(object):
         return result
 
     def clean_relationships_by_name(self, relationships):
-        def map_model_relations(x):
-            return self.clean_name(x[0]), x[1]
+        # Fast version: Use dict comprehensions, avoid nested map/lambda
+        
+        clean_name = self.clean_name  # local var for speed in loop
 
-        def map_models(x):
-            return x[0], dict(map(lambda r: map_model_relations(r), x[1].items()))
-
-        return dict(map(lambda x: map_models(x), relationships.items()))
+        result = {}
+        for model_name, rels in relationships.items():
+            result[model_name] = {
+                clean_name(rel_name): rel_value
+                for rel_name, rel_value in rels.items()
+            }
+        return result
 
     def get_model_columns_by_clean_name(self, MappedBase, mapper):
         table = mapper.tables[0]
