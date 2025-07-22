@@ -32,7 +32,8 @@ class GraphQLView(APIView):
         }
 
     def get_track_query_name(self, request):
-        return '{} {} {}'.format(request.method, request.path, request.context.get('model'))
+        # Use f-string for faster and more efficient string formatting
+        return f"{request.method} {request.path} {request.context.get('model')}"
 
     def map_gql_error(self, error):
         if isinstance(error, GraphQLError):
