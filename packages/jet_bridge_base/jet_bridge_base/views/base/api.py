@@ -117,15 +117,12 @@ class BaseAPIView(object):
                 raise PermissionDenied(getattr(permission, 'message', 'forbidden'))
 
     def default_headers(self):
-        headers = {}
+        if not settings.CORS_HEADERS:
+            return {}
 
-        if settings.CORS_HEADERS:
-            headers['Access-Control-Allow-Origin'] = settings.ALLOW_ORIGIN
-            headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, PATCH, DELETE, OPTIONS'
-            headers['Access-Control-Allow-Headers'] = 'Authorization,DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,X-Application-Warning,X-HTTP-Method-Override,X-Bridge-Settings,X-Stick-Session'
-            headers['Access-Control-Expose-Headers'] = 'Content-Length,Content-Range,Content-Disposition,Content-Type,X-Application-Warning'
-            headers['Access-Control-Allow-Credentials'] = 'true'
-
+        # Only need to copy dict and set one variable, rather than reconstructing everything
+        headers = _CORS_HEADER_CONSTS.copy()
+        headers['Access-Control-Allow-Origin'] = settings.ALLOW_ORIGIN
         return headers
 
     def error_response(self, request, exc_type, exc, traceback):
@@ -215,3 +212,16 @@ class APIView(BaseAPIView):
         if request.session is not None:
             request.session.close()
             request.session = None
+
+_CORS_HEADER_CONSTS = {
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': (
+        'Authorization,DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,'
+        'Content-Type,Range,X-Application-Warning,X-HTTP-Method-Override,'
+        'X-Bridge-Settings,X-Stick-Session'
+    ),
+    'Access-Control-Expose-Headers': (
+        'Content-Length,Content-Range,Content-Disposition,Content-Type,X-Application-Warning'
+    ),
+    'Access-Control-Allow-Credentials': 'true'
+}
