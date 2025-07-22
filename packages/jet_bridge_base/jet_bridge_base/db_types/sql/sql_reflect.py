@@ -23,7 +23,8 @@ def sql_get_tables(
 ):
     view_names = []
 
-    available = util.OrderedSet(insp.get_table_names(schema))
+    # Use set for faster available lookup
+    available = set(insp.get_table_names(schema))
 
     if foreign and hasattr(insp, 'get_foreign_table_names'):
         table_names = insp.get_foreign_table_names()
@@ -36,28 +37,45 @@ def sql_get_tables(
         except NotImplementedError:
             pass
 
+    # Calculate qualified names only if schema is provided
     if schema is not None:
-        available_w_schema = util.OrderedSet(
-            ["%s.%s" % (schema, name) for name in available]
-        )
+        available_w_schema = {"%s.%s" % (schema, name) for name in available}
     else:
         available_w_schema = available
 
-    current = set(metadata.tables)
+    current_set = set(metadata.tables)
 
+    # For extend_existing=False, skip tables already present
     if only is None:
-        load = [
-            name
-            for name, schname in zip(available, available_w_schema)
-            if extend_existing or schname not in current
-        ]
+        if schema is not None:
+            # Precompute qualified name mapping for available<->qualified
+            load = [
+                name
+                for name in available
+                if extend_existing or ("%s.%s" % (schema, name)) not in current_set
+            ]
+        else:
+            load = [
+                name
+                for name in available
+                if extend_existing or name not in current_set
+            ]
     elif callable(only):
-        load = [
-            name
-            for name, schname in zip(available, available_w_schema)
-            if (extend_existing or schname not in current) and only(name)
-        ]
+        test_func = only
+        if schema is not None:
+            load = [
+                name
+                for name in available
+                if (extend_existing or ("%s.%s" % (schema, name)) not in current_set) and test_func(name)
+            ]
+        else:
+            load = [
+                name
+                for name in available
+                if (extend_existing or name not in current_set) and test_func(name)
+            ]
     else:
+        # only is an iterable of table names to load
         missing = [name for name in only if name not in available]
         if missing:
             s = schema and (" schema '%s'" % schema) or ""
@@ -65,11 +83,22 @@ def sql_get_tables(
                 "Could not reflect: requested table(s) not available "
                 "in %r%s: (%s)" % (bind.engine, s, ", ".join(missing))
             )
-        load = [
-            name
-            for name in only
-            if extend_existing or name not in current
-        ]
+        if extend_existing:
+            load = list(only)
+        else:
+            if schema is not None:
+                current_qnames = {"%s.%s" % (schema, name) for name in only}
+                load = [
+                    name
+                    for name in only
+                    if ("%s.%s" % (schema, name)) not in current_set
+                ]
+            else:
+                load = [
+                    name
+                    for name in only
+                    if name not in current_set
+                ]
 
     return load, view_names
 
