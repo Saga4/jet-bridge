@@ -29,9 +29,10 @@ class TableView(APIView):
         metadata, engine = self.get_db(request)
         pk = request.path_kwargs['pk']
 
+        # Optimized: Fast dict-access instead of filter + list + [0]
         try:
-            obj = list(filter(lambda x: x.name == pk, metadata.tables.values()))[0]
-        except IndexError:
+            obj = metadata.tables[pk]
+        except KeyError:
             raise NotFound
 
         self.check_object_permissions(request, obj)
