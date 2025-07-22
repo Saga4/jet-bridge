@@ -45,11 +45,13 @@ def get_queryset_order_by(queryset):
 def get_queryset_limit(queryset):
     if isinstance(queryset, MongoQueryset):
         return queryset.get_limit()
-    else:
-        if hasattr(queryset, '_limit_clause') and queryset._limit_clause:
-            return queryset._limit_clause
-        elif hasattr(queryset, '_limit') and queryset._limit:
-            return queryset._limit
+    # Avoids multiple hasattr + attribute access
+    limit_clause = getattr(queryset, '_limit_clause', None)
+    if limit_clause:
+        return limit_clause
+    limit = getattr(queryset, '_limit', None)
+    if limit:
+        return limit
 
 
 def apply_default_ordering(Model, queryset):
