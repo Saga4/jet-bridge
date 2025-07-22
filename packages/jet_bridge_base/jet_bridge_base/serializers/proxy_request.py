@@ -176,33 +176,60 @@ class ProxyRequestSerializer(Serializer):
         return attrs
 
     def params_dict_to_list(self, items):
-        return list(map(lambda x: {'name': x[0], 'value': x[1]}, items.items()))
+        # Optimized: use list comprehension instead of map+lambda
+        return [{'name': k, 'value': v} for k, v in items.items()]
 
     def interpolate(self, url, headers, query_params, body, pattern, replaces):
-        def replace(str, replaces):
-            for name, value in replaces.items():
-                str = str.replace(pattern % name, value)
-            return str
+        # Pre-compile a regex pattern to match all placeholders in one pass
+        if not replaces:
+            return url, headers, query_params, body
 
-        url = replace(url, replaces)
+        # Optimize str replacement via regex and function lookup
+        # Example: pattern = '{-%s-}', will look for "{-key-}"
+        if pattern.count('%s') == 1:
+            pat_str = re.escape(pattern).replace('\\%s', '(.+?)')  # '{-%s-}' -> '{-(.+?)-}'
+            regex = re.compile(pat_str)
+        else:
+            # fallback, should not happen in current usage
+            regex = None
+
+        def replace_func(s):
+            if not isinstance(s, str):
+                return s
+            if regex is not None:
+                def sub_func(match):
+                    key = match.group(1)
+                    # use str, not dict, to ensure replacement can be non-str
+                    return str(replaces.get(key, match.group(0)))
+                return regex.sub(sub_func, s)
+            return s
+
+        url = replace_func(url)
 
         for header in headers:
-            header['value'] = replace(header['value'], replaces)
+            val = header.get('value')
+            new_val = replace_func(val)
+            if new_val is not val:
+                header['value'] = new_val
 
         for query_param in query_params:
-            query_param['value'] = replace(query_param['value'], replaces)
+            val = query_param.get('value')
+            new_val = replace_func(val)
+            if new_val is not val:
+                query_param['value'] = new_val
 
         if body:
-            body = replace(body, replaces)
+            body = replace_func(body)
 
         return url, headers, query_params, body
 
     def submit(self):
-        method = self.validated_data['method']
-        url = self.validated_data['url']
-        headers = self.validated_data['headers'] or []
-        query_params = self.validated_data['query_params'] or []
-        body = self.validated_data.get('body')
+        vd = self.validated_data
+        method = vd['method']
+        url = vd['url']
+        headers = vd['headers'] or []
+        query_params = vd['query_params'] or []
+        body = vd.get('body')
 
         if isinstance(headers, dict):
             headers = self.params_dict_to_list(headers)
@@ -210,23 +237,30 @@ class ProxyRequestSerializer(Serializer):
         if isinstance(query_params, dict):
             query_params = self.params_dict_to_list(query_params)
 
-        if 'secret_tokens' in self.validated_data:
-            url, headers, query_params, body = self.interpolate(url, headers, query_params, body, '{-%s-}', self.validated_data['secret_tokens'])
+        # Fast check and interpolate only if needed
+        if 'secret_tokens' in vd:
+            url, headers, query_params, body = self.interpolate(
+                url, headers, query_params, body, '{-%s-}', vd['secret_tokens']
+            )
 
-        if 'context' in self.validated_data:
-            url, headers, query_params, body = self.interpolate(url, headers, query_params, body, '{{%s}}', self.validated_data['context'])
+        if 'context' in vd:
+            url, headers, query_params, body = self.interpolate(
+                url, headers, query_params, body, '{{%s}}', vd['context']
+            )
 
         if body:
             body = body.encode('utf-8')
 
-        headers = dict(map(lambda x: (x['name'], x['value']), headers))
-        query_params = list(map(lambda x: (x['name'], x['value']), query_params))
+        headers_dict = {x['name']: x['value'] for x in headers}
+        query_params_list = [(x['name'], x['value']) for x in query_params]
 
         try:
-            r = requests.request(method, url, headers=headers, params=query_params, data=body)
-            response_headers = r.headers
-
-            remove_headers = [
+            # Perform the request
+            r = requests.request(method, url, headers=headers_dict, params=query_params_list, data=body)
+            # r.headers is a case-insensitive dict-like object (requests.structures.CaseInsensitiveDict)
+            # We want to remove keys in remove_headers
+            response_headers = r.headers.copy()  # Don't mutate original
+            remove_headers = {
                 'Access-Control-Allow-Origin',
                 'Access-Control-Allow-Methods',
                 'Access-Control-Allow-Headers',
@@ -242,14 +276,15 @@ class ProxyRequestSerializer(Serializer):
                 'Trailers',
                 'Transfer-Encoding',
                 'Upgrade'
-            ]
+            }
 
-            for header in remove_headers:
-                if header in response_headers:
+            # Remove unwanted headers (case-insensitive for performance)
+            rh_keys = list(response_headers.keys())
+            for header in rh_keys:
+                if header in remove_headers:
                     del response_headers[header]
 
             response = Response(data=r.content, status=r.status_code, headers=response_headers)
-
             return response
         except Exception as e:
             raise ValidationError(e)
