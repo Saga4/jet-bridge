@@ -93,15 +93,17 @@ def safe_endswith(queryset, column, value):
 
 
 def safe_icontains(queryset, column, value):
+    pattern = f'%{value}%'
     if isinstance(column, MongoColumn):
-        return column.ilike('%{}%'.format(value))
+        return column.ilike(pattern)
+    if hasattr(column, 'property'):
+        field_type = column.property.columns[0].type
     else:
-        field_type = column.property.columns[0].type if hasattr(column, 'property') else column.type
+        field_type = column.type
 
-        if is_instance_or_subclass(field_type, (ENUM, sqltypes.NullType)):
-            return column.cast(Unicode).ilike('%{}%'.format(value))
-        else:
-            return column.ilike('%{}%'.format(value))
+    if is_instance_or_subclass(field_type, (ENUM, sqltypes.NullType)):
+        return column.cast(Unicode).ilike(pattern)
+    return column.ilike(pattern)
 
 
 def json_icontains(queryset, column, value):
