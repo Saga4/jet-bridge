@@ -140,13 +140,11 @@ def coveredby(queryset, column, value):
 
 
 def safe_not_array(value):
-    if isinstance(value, list):
-        if len(value):
-            return value[0]
-        else:
-            return ''
-    else:
+    # Fast-path for non-list
+    if not isinstance(value, list):
         return value
+    # Return first element if list is non-empty, else empty string
+    return value[0] if value else ''
 
 
 def safe_array(value):
