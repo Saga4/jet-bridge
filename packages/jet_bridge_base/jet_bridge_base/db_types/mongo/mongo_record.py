@@ -26,7 +26,7 @@ class MongoRecord(object):
         self.mark_update(name)
 
     def get_data(self):
-        return object.__getattribute__(self, 'data')
+        return self.data  # Equivalent to object.__getattribute__(self, 'data')
 
     def get_meta(self):
         return object.__getattribute__(self, 'meta')
