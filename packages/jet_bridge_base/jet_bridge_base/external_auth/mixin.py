@@ -11,7 +11,7 @@ class ExternalAuthMixin(object):
 
     def __init__(self, *args, **kwargs):
         self.init_backends()
-        super(ExternalAuthMixin, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
 
     def init_backends(self):
         backend_paths = list(map(lambda x: x.get('backend_path'), settings.SSO_APPLICATIONS.values()))
@@ -33,4 +33,5 @@ class ExternalAuthMixin(object):
         self.backend = Backend(self.strategy, redirect_uri)
 
     def redirect_uri(self, app):
-        return '/api/external_auth/complete/{0}/'.format(app)
+        # Build the external auth completion URI for a given app
+        return f'/api/external_auth/complete/{app}/'
