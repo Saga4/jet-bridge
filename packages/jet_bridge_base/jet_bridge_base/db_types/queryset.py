@@ -33,13 +33,14 @@ def empty_filter(cls):
 def get_queryset_order_by(queryset):
     if isinstance(queryset, MongoQueryset):
         return queryset.get_order_by()
-    else:
-        if hasattr(queryset, '_order_by_clauses') and queryset._order_by_clauses:
-            return queryset._order_by_clauses
-        elif hasattr(queryset, '_order_by') and queryset._order_by:
-            return queryset._order_by
-        else:
-            return []
+    # Use getattr with sentinel to avoid repeated hasattr calls
+    val = getattr(queryset, '_order_by_clauses', None)
+    if val:
+        return val
+    val = getattr(queryset, '_order_by', None)
+    if val:
+        return val
+    return []
 
 
 def get_queryset_limit(queryset):
