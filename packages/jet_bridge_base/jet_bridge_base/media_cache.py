@@ -2,6 +2,7 @@ import os
 import hashlib
 
 from jet_bridge_base.configuration import configuration
+from functools import lru_cache
 
 
 class MediaCache(object):
@@ -9,8 +10,9 @@ class MediaCache(object):
     files = []
     size = 0
     dir = '_jet_cache'
-
     def __init__(self):
+        # Pre-bind dir as instance attribute for quick access
+        self.dir = '_jet_cache'
         self.update_files()
 
     def get_files(self):
@@ -57,8 +59,8 @@ class MediaCache(object):
             self.files.remove(self.files[0])
 
     def filename(self, path):
-        extension = os.path.splitext(path)[1]
-        return '{}{}'.format(hashlib.sha256(path.encode('utf8')).hexdigest(), extension)
+        # Use cached filename computation and pre-bound dir
+        return _filename_cached(path, self.dir)
 
     def full_path(self, path):
         return os.path.join(self.dir, self.filename(path))
@@ -68,6 +70,16 @@ class MediaCache(object):
         return configuration.media_exists(thumbnail_full_path)
 
     def url(self, path, request):
-        return configuration.media_url(os.path.join(self.dir, self.filename(path)), request)
+        # Avoid os.path.join for simple cases
+        filename = self.filename(path)
+        cached_path = f"{self.dir}/{filename}"
+        return configuration.media_url(cached_path, request)
+
+
+@lru_cache(maxsize=4096)
+def _filename_cached(path, dir):
+    extension = os.path.splitext(path)[1]
+    # f-string for faster formatting
+    return f"{hashlib.sha256(path.encode('utf8')).hexdigest()}{extension}"
 
 cache = MediaCache()
