@@ -54,11 +54,18 @@ def uniform_to_str(column):
 
 
 def is_column_has_default(column):
+    # Check for autoincrement, default, or server_default
     return column.autoincrement or column.default or column.server_default
 
 
 def is_column_optional(column):
-    return is_column_has_default(column) or column.nullable
+    # Check for autoincrement, default, server_default, or nullable in a single pass
+    return (
+        column.autoincrement or 
+        column.default or 
+        column.server_default or 
+        column.nullable
+    )
 
 
 def is_column_required(column, primary_key_auto):
