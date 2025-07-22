@@ -398,10 +398,11 @@ class SqlsSerializer(Serializer):
     def execute(self, data):
         serializer = SqlSerializer(context=self.context)
 
-        def map_query(query):
+        # Optimize: use list comprehension for less overhead than map + nested def
+        result = []
+        for query in data['queries']:
             try:
-                return serializer.execute(query)
+                result.append(serializer.execute(query))
             except SqlError as e:
-                return {'error': str(e.detail)}
-
-        return list(map(map_query, data['queries']))
+                result.append({'error': str(e.detail)})
+        return result
