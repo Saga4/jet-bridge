@@ -3,7 +3,8 @@ from .mongo_table import MongoTable
 
 class MongoMetadata(object):
     def __init__(self, tables=None, schema=None):
-        self.tables = list(map(lambda x: MongoTable.deserialize(x), tables)) if tables else list()
+        # Use list comprehension for faster deserialization
+        self.tables = [MongoTable.deserialize(x) for x in tables] if tables else []
         self.schema = schema
 
     def append_table(self, table):
@@ -14,7 +15,8 @@ class MongoMetadata(object):
         return MongoMetadata(**obj)
 
     def serialize(self):
+        # Use list comprehension for faster serialization
         return {
-            'tables': list(map(lambda x: x.serialize(), self.tables)),
+            'tables': [x.serialize() for x in self.tables],
             'schema': self.schema
         }
