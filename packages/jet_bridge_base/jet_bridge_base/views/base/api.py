@@ -98,6 +98,7 @@ class BaseAPIView(object):
         pass
 
     def get_permissions(self):
+        # Provided for compatibility; not used in check_object_permissions for speed
         return [permission() for permission in self.permission_classes]
 
     def check_permissions(self, request):
@@ -112,7 +113,9 @@ class BaseAPIView(object):
         if settings.DISABLE_AUTH:
             return
 
-        for permission in self.get_permissions():
+        permission_classes = self.permission_classes
+        for permission_class in permission_classes:
+            permission = permission_class()
             if not permission.has_object_permission(self, request, obj):
                 raise PermissionDenied(getattr(permission, 'message', 'forbidden'))
 
