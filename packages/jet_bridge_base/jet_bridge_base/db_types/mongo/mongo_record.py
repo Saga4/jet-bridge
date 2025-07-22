@@ -9,7 +9,7 @@ class MongoRecord(object):
 
     def __init__(self, table_name, **kwargs):
         object.__setattr__(self, 'meta', MongoRecordMeta(table_name))
-        object.__setattr__(self, 'data', dict(kwargs))
+        object.__setattr__(self, 'data', kwargs)  # kwargs is already a dict, no need to call dict(kwargs)
         object.__setattr__(self, 'update_pending', set())
 
     def __getattr__(self, name):
@@ -38,7 +38,7 @@ class MongoRecord(object):
         object.__setattr__(self, 'create_pending', True)
 
     def get_update_pending(self):
-        return object.__getattribute__(self, 'update_pending')
+        return self.update_pending  # Access directly, __getattribute__ is implicit
 
     def mark_update(self, name):
         object.__getattribute__(self, 'update_pending').add(name)
