@@ -107,7 +107,9 @@ class Field(object):
 
     def to_representation(self, value):
         if self.many:
-            return list(map(lambda x: self.to_representation_item(x), value or []))
+            # Optimization: use list comprehension and local variable to speed up per-item calls
+            item_fn = self.to_representation_item
+            return [item_fn(x) for x in (value if value is not None else ())]
         else:
             return self.to_representation_item(value)
 
