@@ -276,43 +276,21 @@ def sql_create_connection_engine(conf, tunnel):
 
 
 def sql_load_mapped_base(MappedBase, clear=False):
+    # Prepare shared closures with MappedBase
+    MappedBase_metadata = MappedBase.metadata
+
     def classname_for_table(base, tablename, table):
-        return get_table_name(MappedBase.metadata, table)
+        return _classname_for_table(MappedBase_metadata, base, tablename, table)
 
-    def name_for_scalar_relationship(base, local_cls, referred_cls, constraint):
-        foreign_key = constraint.elements[0] if len(constraint.elements) else None
-        if foreign_key:
-            name = '__'.join([foreign_key.parent.name, 'to', foreign_key.column.table.name, foreign_key.column.name])
-        else:
-            name = referred_cls.__name__.lower()
-
-        if name in constraint.parent.columns:
-            name = name + '_relation'
-            logger.warning('Already detected column name, using {}'.format(name))
-
-        return name
-
-    def name_for_collection_relationship(base, local_cls, referred_cls, constraint):
-        foreign_key = constraint.elements[0] if len(constraint.elements) else None
-        if foreign_key:
-            name = '__'.join([foreign_key.parent.table.name, foreign_key.parent.name, 'to', foreign_key.column.name])
-        else:
-            name = referred_cls.__name__.lower()
-
-        if name in constraint.parent.columns:
-            name = name + '_relation'
-            logger.warning('Already detected column name, using {}'.format(name))
-
-        return name
-
+    # No need to partially apply for others; MappedBase is not used
     if clear:
         MappedBase.registry.dispose()
         MappedBase.classes.clear()
 
     MappedBase.prepare(
         classname_for_table=classname_for_table,
-        name_for_scalar_relationship=name_for_scalar_relationship,
-        name_for_collection_relationship=name_for_collection_relationship
+        name_for_scalar_relationship=_name_for_scalar_relationship,
+        name_for_collection_relationship=_name_for_collection_relationship
     )
 
 
@@ -325,3 +303,39 @@ def sql_load_database_table(engine, MappedBase, schema, table):
     sql_load_mapped_base(related_base)
 
     return related_base.classes.get(table)
+
+
+def _classname_for_table(MappedBase_metadata, base, tablename, table):
+    return get_table_name(MappedBase_metadata, table)
+
+def _name_for_scalar_relationship(base, local_cls, referred_cls, constraint):
+    elements = constraint.elements
+    foreign_key = elements[0] if elements else None
+    if foreign_key:
+        name = f"{foreign_key.parent.name}__to__{foreign_key.column.table.name}__{foreign_key.column.name}"
+    else:
+        name = referred_cls.__name__.lower()
+
+    parent_columns = constraint.parent.columns
+    # Avoid repeated dot lookup, check once
+    if name in parent_columns:
+        name = f"{name}_relation"
+        logger.warning('Already detected column name, using %s', name)
+
+    return name
+
+def _name_for_collection_relationship(base, local_cls, referred_cls, constraint):
+    elements = constraint.elements
+    foreign_key = elements[0] if elements else None
+    if foreign_key:
+        name = f"{foreign_key.parent.table.name}__{foreign_key.parent.name}__to__{foreign_key.column.name}"
+    else:
+        name = referred_cls.__name__.lower()
+
+    parent_columns = constraint.parent.columns
+    # Avoid repeated dot lookup, check once
+    if name in parent_columns:
+        name = f"{name}_relation"
+        logger.warning('Already detected column name, using %s', name)
+
+    return name
