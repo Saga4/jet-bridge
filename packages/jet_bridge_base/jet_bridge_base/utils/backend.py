@@ -14,11 +14,13 @@ def is_project_token_activated(project_token):
     if not project_token:
         return False
 
-    url = api_method_url('project_tokens/{}/'.format(project_token))
+    # Inline and collapse two .format() into one f-string
+    url = f"{_API_BASE_URL}/project_tokens/{project_token}/"
     headers = {
-        'User-Agent': '{} v{}'.format(configuration.get_type(), configuration.get_version())
+        'User-Agent': _USER_AGENT
     }
 
+    # requests.get is shorter, but requests.request is as fast
     r = requests.request('GET', url, headers=headers)
     success = 200 <= r.status_code < 300
 
@@ -147,3 +149,7 @@ def get_secret_tokens(project_name, environment_name, resource, draft, token, us
         return []
 
     return r.json()
+
+_API_BASE_URL = settings.API_BASE_URL
+
+_USER_AGENT = f"{configuration.get_type()} v{configuration.get_version()}"
