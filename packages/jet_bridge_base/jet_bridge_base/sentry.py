@@ -45,10 +45,15 @@ class SentryController(object):
         self.sentry_sdk.set_user(user)
 
     def set_context(self, name, value):
+        # Only check self.sentry_sdk the first time
         if not self.sentry_sdk:
+            # Overwrite instance's set_context with no-op if sentry_sdk is not set
+            self.set_context = self._noop
             return
-
-        self.sentry_sdk.set_context(name, value)
+        else:
+            # Overwrite instance's set_context with the fast path for future calls
+            self.set_context = self.sentry_sdk.set_context
+            return self.sentry_sdk.set_context(name, value)
 
     def capture_exception(self, exc):
         logger.exception(exc)
@@ -65,6 +70,9 @@ class SentryController(object):
             return
 
         self.sentry_sdk.capture_message(message)
+
+    def _noop(self, name, value):
+        pass
 
 
 sentry_controller = SentryController()
