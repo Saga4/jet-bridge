@@ -33,11 +33,13 @@ class ModelDescriptionRelationOverridesSerializer(Serializer):
         return name
 
     def generate_one_to_many_name(self, mapper, local_field, related_model, related_field):
-        name = '__'.join([related_model, related_field, 'to', local_field])
+        # Construct the name directly instead of using join on a list
+        name = f"{related_model}__{related_field}__to__{local_field}"
 
+        # Use __contains__ for faster lookup (equivalent to 'in')
         if name in mapper.columns:
-            name = name + '_relation'
-            logger.warning('Already detected column name, using {}'.format(name))
+            name = f"{name}_relation"
+            logger.warning(f"Already detected column name, using {name}")
 
         return name
 
