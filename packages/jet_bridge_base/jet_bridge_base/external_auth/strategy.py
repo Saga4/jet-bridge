@@ -13,6 +13,14 @@ class JetBridgeStrategy(BaseStrategy):
         self.request_handler = request_handler
         self.request = request
         self.config = config
+        # Precompute the merged config for faster get_setting calls
+        self._settings = merge_two_dicts(config, {
+            'pipeline': [
+                'social_core.pipeline.social_auth.social_details',
+                'jet_bridge_base.external_auth.pipeline.save_extra_data',
+                'jet_bridge_base.external_auth.pipeline.return_result'
+            ]
+        })
         super(JetBridgeStrategy, self).__init__(storage, tpl)
 
     def authenticate(self, *args, **kwargs):
@@ -25,15 +33,9 @@ class JetBridgeStrategy(BaseStrategy):
         } if result else {}
 
     def get_setting(self, name):
-        settings = merge_two_dicts(self.config, {
-            'pipeline': [
-                'social_core.pipeline.social_auth.social_details',
-                'jet_bridge_base.external_auth.pipeline.save_extra_data',
-                'jet_bridge_base.external_auth.pipeline.return_result'
-            ]
-        })
+        # Use precomputed settings for faster access
         key = name.lower()
-        return settings[key]
+        return self._settings[key]
 
     def request_data(self, merge=True):
         return merge_two_dicts(self.request.data, self.request.query_arguments)
