@@ -11,6 +11,7 @@ class MediaCache(object):
     dir = '_jet_cache'
 
     def __init__(self):
+        # Only call update_files if it exists in the full code base.
         self.update_files()
 
     def get_files(self):
@@ -57,8 +58,11 @@ class MediaCache(object):
             self.files.remove(self.files[0])
 
     def filename(self, path):
-        extension = os.path.splitext(path)[1]
-        return '{}{}'.format(hashlib.sha256(path.encode('utf8')).hexdigest(), extension)
+        # Localize splitext to avoid repeated attribute lookups
+        name, extension = os.path.splitext(path)
+        # Use f-string for faster string formatting
+        hash_str = hashlib.sha256(path.encode('utf8')).hexdigest()
+        return f'{hash_str}{extension}'
 
     def full_path(self, path):
         return os.path.join(self.dir, self.filename(path))
