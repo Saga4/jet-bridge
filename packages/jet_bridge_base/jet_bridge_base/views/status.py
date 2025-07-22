@@ -85,12 +85,12 @@ class StatusView(BaseAPIView):
 
     def map_tunnel(self, tunnel):
         if not tunnel:
-            return
+            return  # Explicit None (unchanged logic)
 
         return {
             'is_active': tunnel.is_active,
-            'local_address': '{}:{}'.format(tunnel.local_bind_host, tunnel.local_bind_port),
-            'remote_address': '{}:{}'.format(tunnel.ssh_host, tunnel.ssh_port)
+            'local_address': f'{tunnel.local_bind_host}:{tunnel.local_bind_port}',
+            'remote_address': f'{tunnel.ssh_host}:{tunnel.ssh_port}'
         }
 
     def map_connection(self, connection):
