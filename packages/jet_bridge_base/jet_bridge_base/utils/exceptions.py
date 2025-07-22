@@ -7,14 +7,15 @@ from jet_bridge_base.exceptions.validation_error import ValidationError
 
 def serialize_validation_error(exc):
     def process(e, root=False):
-        if isinstance(e.detail, dict):
-            return dict(map(lambda x: (x[0], process(x[1])), e.detail.items()))
-        elif isinstance(e.detail, list):
-            return list(map(lambda x: process(x), e.detail))
+        detail = e.detail
+        if isinstance(detail, dict):
+            return {k: process(v) for k, v in detail.items()}
+        elif isinstance(detail, list):
+            return [process(x) for x in detail]
         elif root:
-            return {'non_field_errors': [e.detail]}
+            return {'non_field_errors': [detail]}
         else:
-            return e.detail
+            return detail
 
     return process(exc, root=True)
 
