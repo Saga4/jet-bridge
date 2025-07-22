@@ -36,7 +36,9 @@ class JetBridgeStrategy(BaseStrategy):
         return settings[key]
 
     def request_data(self, merge=True):
-        return merge_two_dicts(self.request.data, self.request.query_arguments)
+        # Use native dict unpacking for fast merge; if merge=False is used in practice,
+        # You may need to handle that as well.
+        return {**self.request.data, **self.request.query_arguments}
 
     def request_host(self):
         return self.request.host
