@@ -11,15 +11,17 @@ class FloatField(Field):
     def to_internal_value_item(self, value):
         if value is None:
             return
-        value = six.text_type(value).strip()
 
-        if value.lower() == 'true':
+        value_str = str(value).strip()
+        value_lower = value_str.lower()
+
+        if value_lower == 'true':
             return 1
-        elif value.lower() == 'false':
+        elif value_lower == 'false':
             return 0
 
         try:
-            return float(value)
+            return float(value_str)
         except (ValueError, TypeError):
             self.error('invalid')
 
