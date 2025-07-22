@@ -16,7 +16,9 @@ class BinaryField(Field):
             return binascii.unhexlify(value)
 
     def to_representation_item(self, value):
+        # Use the native .hex() method instead of binascii.hexlify().decode()
         if isinstance(value, bytes):
-            return binascii.hexlify(value).decode('ascii')
+            return value.hex()
         elif isinstance(value, ObjectId):
-            return binascii.hexlify(value.binary).decode('ascii')
+            # ObjectId.binary is bytes as well
+            return value.binary.hex()
