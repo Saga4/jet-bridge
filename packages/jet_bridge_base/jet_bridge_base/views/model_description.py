@@ -21,6 +21,7 @@ from jet_bridge_base.utils.crypt import get_sha256_hash
 from jet_bridge_base.utils.db_types import sql_to_map_type, sql_to_db_type
 from jet_bridge_base.utils.relations import relationship_direction_to_str
 from jet_bridge_base.utils.tables import get_table_name
+from functools import lru_cache
 
 
 def uniform_to_map_type(column):
@@ -461,3 +462,5 @@ class ModelDescriptionView(APIView):
 
         if if_none_match is not None and '"%s"' % rendered_data_hash == if_none_match:
             return Response(status=status.HTTP_304_NOT_MODIFIED)
+
+sql_to_map_type = lru_cache(maxsize=128)(sql_to_map_type)
