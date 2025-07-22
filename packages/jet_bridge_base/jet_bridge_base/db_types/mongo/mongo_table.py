@@ -6,10 +6,13 @@ from .mongo_column import MongoColumn
 class MongoTable(object):
     def __init__(self, name, columns=None, comment=None, schema=None):
         self.name = name
-        self.columns = CollectionDict(map(lambda x: (
-            x['name'],
-            MongoColumn.deserialize(self, x)
-        ), columns)) if columns else CollectionDict()
+        # Use a generator expression for improved performance and memory usage
+        if columns:
+            self.columns = CollectionDict(
+                (x['name'], MongoColumn.deserialize(self, x)) for x in columns
+            )
+        else:
+            self.columns = CollectionDict()
         self.comment = comment
         self.schema = schema
 
@@ -22,9 +25,10 @@ class MongoTable(object):
         return MongoTable(name, **obj)
 
     def serialize(self):
+        # Use a list comprehension for serialization instead of map+lambda
         return {
             'name': self.name,
-            'columns': list(map(lambda x: x.serialize(), self.columns.values())),
+            'columns': [x.serialize() for x in self.columns.values()],
             'comment': self.comment,
             'schema': self.schema
         }
