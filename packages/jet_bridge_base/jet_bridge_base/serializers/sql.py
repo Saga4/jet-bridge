@@ -19,6 +19,7 @@ from jet_bridge_base.filters.filter import EMPTY_VALUES
 from jet_bridge_base.filters.filter_for_dbfield import filter_for_data_type
 from jet_bridge_base.serializers.serializer import Serializer
 from jet_bridge_base.utils.db_types import map_to_sql_type, sql_to_map_type
+import re
 
 
 class ColumnSerializer(Serializer):
@@ -72,17 +73,21 @@ class SqlSerializer(Serializer):
     v = fields.IntegerField(default=1)
 
     def validate(self, attrs):
-        forbidden = ['insert', 'update', 'delete', 'grant', 'show']
-        for i in range(len(forbidden)):
-            forbidden.append('({}'.format(forbidden[i]))
-        if any(map(lambda x: ' {} '.format(attrs['query'].lower()).find(' {} '.format(x)) != -1, forbidden)):
+        # Optimize forbidden query check: use regex for all forbidden keywords with and without (
+        forbidden_words = ['insert', 'update', 'delete', 'grant', 'show']
+        pattern = r'(?i)\b(?:' + '|'.join(re.escape(word) + r'|\(' + re.escape(word) for word in forbidden_words) + r')\b'
+        query_str = attrs['query'].lower()
+        if re.search(pattern, query_str):
             raise ValidationError({'query': 'forbidden query'})
 
+        # Optimize param replacement
         if attrs['v'] < 2:
-            i = 0
-            while attrs['query'].find('%s') != -1:
-                attrs['query'] = attrs['query'].replace('%s', ':param_{}'.format(i), 1)
-                i += 1
+            # Replace each %s with uniquely indexed :param_i
+            def repl_fn(match, c=[0]):
+                r = ':param_{}'.format(c[0])
+                c[0] += 1
+                return r
+            attrs['query'] = re.sub(r'%s', repl_fn, attrs['query'])
 
         if 'limit' in attrs:
             if attrs['limit'] > 1000:
