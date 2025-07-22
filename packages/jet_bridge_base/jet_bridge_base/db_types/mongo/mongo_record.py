@@ -8,12 +8,13 @@ class MongoRecord(object):
     delete_pending = False
 
     def __init__(self, table_name, **kwargs):
-        object.__setattr__(self, 'meta', MongoRecordMeta(table_name))
-        object.__setattr__(self, 'data', dict(kwargs))
-        object.__setattr__(self, 'update_pending', set())
+        d = self.__dict__
+        d['meta'] = MongoRecordMeta(table_name)
+        d['data'] = kwargs
+        d['update_pending'] = set()
 
     def __getattr__(self, name):
-        return self.get(name)
+        return self.data.get(name)
 
     def get(self, name, default=None):
         return self.data.get(name, default)
