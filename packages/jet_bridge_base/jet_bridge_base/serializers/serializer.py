@@ -1,3 +1,6 @@
+from collections import OrderedDict
+from jet_bridge_base.fields.field import Field
+
 try:
     from collections.abc import Mapping, Iterable
     from collections import OrderedDict
@@ -14,20 +17,40 @@ class SerializerMetaclass(type):
 
     @classmethod
     def _get_declared_fields(cls, bases, attrs):
-        fields = [(field_name, attrs.pop(field_name))
-                  for field_name, obj in list(attrs.items())
-                  if isinstance(obj, Field)]
-        fields.sort(key=lambda x: x[1].creation_counter)
+        # Start with base class fields (in reverse MRO), then update with local fields.
+        all_fields = []
 
+        # Process bases' declared fields before current class's.
         for base in reversed(bases):
-            if hasattr(base, '_declared_fields'):
-                fields = [
-                    (field_name, obj) for field_name, obj
-                    in base._declared_fields.items()
-                    if field_name not in attrs
-                ] + fields
+            base_fields = getattr(base, '_declared_fields', None)
+            if base_fields:
+                # Only add fields not shadowed by local attrs
+                for field_name, obj in base_fields.items():
+                    if field_name not in attrs:
+                        all_fields.append((field_name, obj))
 
-        return OrderedDict(fields)
+        # Only pop later, after collecting names: minimize repeated lookups and repeated dict copying
+        local_fields = []
+        to_remove = []
+        for field_name, obj in attrs.items():
+            if isinstance(obj, Field):
+                local_fields.append((field_name, obj))
+                to_remove.append(field_name)
+
+        # Remove after collection for lower mutation overhead
+        for field_name in to_remove:
+            attrs.pop(field_name)
+
+        # Sort local fields by creation_counter
+        if len(local_fields) > 1:
+            # usually only a few fields, skip overhead for single
+            local_fields.sort(key=lambda x: x[1].creation_counter)
+
+        # Local fields should override base fields of the same name (unordered, so append local last)
+        all_fields.extend(local_fields)
+
+        # Use OrderedDict directly (much faster for bulk init)
+        return OrderedDict(all_fields)
 
     def __new__(cls, name, bases, attrs):
         attrs['_declared_fields'] = cls._get_declared_fields(bases, attrs)
