@@ -62,10 +62,11 @@ def is_column_optional(column):
 
 
 def is_column_required(column, primary_key_auto):
+    # Avoid function call overhead in inner loop
     if primary_key_auto:
         return True
-    else:
-        return not is_column_optional(column)
+    # Inline is_column_optional for speed
+    return not ((column.autoincrement or column.default or column.server_default) or column.nullable)
 
 
 def map_column_default(column):
