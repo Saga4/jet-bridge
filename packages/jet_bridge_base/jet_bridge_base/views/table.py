@@ -18,6 +18,7 @@ class TableView(APIView):
     permission_classes = (HasProjectPermissions,)
 
     def get_db(self, request):
+        # Only returns MappedBase.metadata and engine; cannot optimize further.
         MappedBase = get_mapped_base(request)
         engine = get_engine(request)
         return MappedBase.metadata, engine
@@ -29,9 +30,9 @@ class TableView(APIView):
         metadata, engine = self.get_db(request)
         pk = request.path_kwargs['pk']
 
-        try:
-            obj = list(filter(lambda x: x.name == pk, metadata.tables.values()))[0]
-        except IndexError:
+        # Optimized table lookup: avoids list() and filter(), stops at first match
+        obj = next((table for table in metadata.tables.values() if table.name == pk), None)
+        if obj is None:
             raise NotFound
 
         self.check_object_permissions(request, obj)
