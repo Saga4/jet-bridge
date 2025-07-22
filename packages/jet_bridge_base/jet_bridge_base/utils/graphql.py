@@ -574,29 +574,51 @@ class GraphQLSchemaGenerator(object):
 
             model_values = lookup_data['model_values']
 
+            # Use list comprehension for faster filtering
             if instance_predicate:
-                model_values = list(filter(lambda x: instance_predicate(x['instance']), model_values))
+                predicate = instance_predicate
+                model_values = [x for x in model_values if predicate(x['instance'])]
 
-            values = list(flatten(map(lambda x: x['value'], model_values)))
+            # Collect flattened 'value's more efficiently
+            values = []
+            append = values.append
+            for x in model_values:
+                v = x['value']
+                if isinstance(v, (list, tuple)):
+                    values.extend(v)
+                else:
+                    append(v)
 
             if lookup_data['return']:
-                if lookup_data['return_list']:
+                # Use .get, cache return_list
+                return_list = lookup_data['return_list']
+                if return_list:
                     item_result['value'] = values
                 else:
-                    item_result['value'] = values[0] if len(values) else None
+                    item_result['value'] = values[0] if values else None
 
+            # Avoid function call and closure in recursion/aggregation
             if 'related' in lookup_data:
+                related_column = lookup_data['related_column']
+                values_set = set(values)
                 item_result['related'] = self.filter_lookup_models(
                     lookup_data['related'],
-                    lambda x: getattr(x, lookup_data['related_column'], None) in values
+                    lambda x, col=related_column, vals=values_set: getattr(x, col, None) in vals
                 )
 
             if 'aggregated_values' in lookup_data:
-                model_values = list(filter(
-                    lambda x: getattr(x['instance'], lookup_data['source_column'], None) in values,
-                    lookup_data['aggregated_values']
-                ))
-                item_result['aggregated'] = model_values[0]['value'] if len(model_values) else 0
+                source_column = lookup_data['source_column']
+                values_set = set(values)
+                aggr_values = lookup_data['aggregated_values']
+
+                # Inline the filter for speed
+                matched = None
+                for x in aggr_values:
+                    # Stop at first match for less work, since only first is used
+                    if getattr(x['instance'], source_column, None) in values_set:
+                        matched = x['value']
+                        break
+                item_result['aggregated'] = matched if matched is not None else 0
 
             result[lookup_name] = item_result
 
