@@ -14,6 +14,7 @@ from jet_bridge_base.responses.redirect import RedirectResponse
 from jet_bridge_base.responses.template import TemplateResponse
 from jet_bridge_base.status import HTTP_204_NO_CONTENT
 from tornado.iostream import StreamClosedError
+from functools import lru_cache
 
 
 class BaseViewHandler(tornado.web.RequestHandler):
@@ -157,7 +158,11 @@ class BaseViewHandler(tornado.web.RequestHandler):
 
 
 def view_handler(cls):
+    return _create_view_handler(cls)
+
+
+@lru_cache(maxsize=128)
+def _create_view_handler(cls):
     class ViewHandler(BaseViewHandler):
         view = cls()
-
     return ViewHandler
