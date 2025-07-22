@@ -70,10 +70,24 @@ except ImportError:
 
 
 def sql_to_map_type(value):
-    for rule in reversed(map_data_types):
-        if is_instance_or_subclass(value, rule['sql_type']):
-            return rule['map_type']
-    logger.warning('Unknown database type: {}'.format(str(value)))
+    global _sql_to_map_type_cache
+    # Lazily build the cache
+    if _sql_to_map_type_cache is None:
+        _sql_to_map_type_cache = _build_sql_to_map_type_cache()
+    # Instead of linear scan, do O(1) lookups for each candidate sql_type in cache
+    for sql_type, map_type in _sql_to_map_type_cache.items():
+        if is_instance_or_subclass(value, sql_type):
+            return map_type
+    # Only log warning once per unknown value's type
+    t = type(value)
+    k = getattr(t, "__name__", str(t))
+    _unknown_warned = getattr(sql_to_map_type, "__unknown_warned", set())
+    if k not in _unknown_warned:
+        logger.warning('Unknown database type: {}'.format(str(value)))
+        # mutate function attribute to avoid global
+        if not hasattr(sql_to_map_type, "__unknown_warned"):
+            sql_to_map_type.__unknown_warned = set()
+        sql_to_map_type.__unknown_warned.add(k)
     return default_map_type
 
 
@@ -113,3 +127,15 @@ def get_sql_type_convert(value):
         if is_instance_or_subclass(value, rule['sql_type']):
             return rule.get('convert')
     logger.warning('Unknown database type: {}'.format(str(value)))
+
+def _build_sql_to_map_type_cache():
+    cache = {}
+    # reversed to match the reversed search order
+    for rule in reversed(map_data_types):
+        t = rule['sql_type']
+        # we want the FIRST rule encountered for this type in the reversed list:
+        if t not in cache:
+            cache[t] = rule['map_type']
+    return cache
+
+_sql_to_map_type_cache = None
