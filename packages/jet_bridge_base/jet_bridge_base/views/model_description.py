@@ -458,6 +458,6 @@ class ModelDescriptionView(APIView):
 
     def get_not_modified_response(self, request, rendered_data_hash):
         if_none_match = request.headers.get('IF_NONE_MATCH')
-
-        if if_none_match is not None and '"%s"' % rendered_data_hash == if_none_match:
+        expected_etag = f'"{rendered_data_hash}"'
+        if if_none_match == expected_etag:
             return Response(status=status.HTTP_304_NOT_MODIFIED)
