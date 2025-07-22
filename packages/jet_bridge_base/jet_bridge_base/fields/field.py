@@ -72,14 +72,9 @@ class Field(object):
         return field_value
 
     def get_non_array_value(self, array_value):
-        result = []
-
-        for value in array_value:
-            if value is None:
-                continue
-            str_value = six.text_type(value)
-            result.append(str_value)
-
+        # Optimized: use list comprehension and localize method for faster access
+        text_type = six.text_type
+        result = [text_type(value) for value in array_value if value is not None]
         return ','.join(result)
 
     def run_validation(self, value):
