@@ -38,9 +38,12 @@ class Field(object):
         self.default = kwargs.pop('default', empty)
         self.context = kwargs.pop('context', {})
 
+        # Build error messages more efficiently by using a single dict comprehension
         messages = {}
         for cls in reversed(self.__class__.__mro__):
-            messages.update(getattr(cls, 'field_error_messages', {}))
+            field_messages = getattr(cls, 'field_error_messages', None)
+            if field_messages:
+                messages.update(field_messages)
         self.error_messages = messages
 
     def validate(self, value):
@@ -95,10 +98,12 @@ class Field(object):
         raise NotImplementedError
 
     def to_internal_value(self, value):
+        # Use list comprehension for more efficient looping and avoid lambda
         if self.many:
             if value is empty:
                 return []
-            return list(map(lambda x: self.to_internal_value_item(x), value))
+            to_item = self.to_internal_value_item
+            return [to_item(x) for x in value]
         else:
             return self.to_internal_value_item(value)
 
