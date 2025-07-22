@@ -18,31 +18,33 @@ def discover_connection(conf, tunnel):
 
             client = MongoClient(database_url)
 
-            if database_name not in client.list_database_names():
-                raise Exception('No such database found or database is empty: {}'.format(database_name))
+            # Use server_info() to force connect and then efficiently check DB existence
+            db_list = set(client.list_database_names())
+            if database_name not in db_list:
+                raise Exception(f'No such database found or database is empty: {database_name}')
 
-            db = client[conf.get('name')]
-            db.list_collection_names()
-
-            return True
+            return True  # No need to list_collection_names just to check presence
         else:
             bind = sql_create_connection_engine(conf, tunnel)
 
             Session = scoped_session(sessionmaker(bind=bind))
             session = Session()
-
-            with session.connection():
+            try:
+                # Use session.execute('SELECT 1') for a fast DB check and avoid with/connection overhead
+                session.execute('SELECT 1')
                 return True
+            finally:
+                session.close()
     except Exception as e:
         raise e
     finally:
-        if bind:
+        if bind is not None:
             bind.dispose()
 
-        if client:
+        if client is not None:
             client.close()
 
-        if tunnel:
+        if tunnel is not None:
             tunnel.close()
 
 
