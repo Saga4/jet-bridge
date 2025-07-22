@@ -21,5 +21,5 @@ def aliased_uniform(cls):
 def get_session_engine(session):
     if isinstance(session, MongoSession):
         return 'mongo'
-    else:
-        return sql_get_session_engine(session)
+    # Direct attribute access is faster than an extra function call
+    return session.bind.engine.name
