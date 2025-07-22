@@ -25,87 +25,102 @@ class StatusView(BaseAPIView):
         tables_processed = schema.get('tables_processed', 0)
         tables_total = schema.get('tables_total')
 
-        if instance:
-            types_count = len(instance._type_map.values())
-            filters_count = 0
-            filters_fields_count = 0
-            filters_relationships_count = 0
-            lookups_count = 0
-            lookups_fields_count = 0
-            lookups_relationships_count = 0
-            sort_count = 0
-            attrs_count = 0
-            get_schema_time = schema.get('get_schema_time')
-            memory_usage_approx = schema.get('memory_usage_approx')
-
-            for item in instance._type_map.values():
-                if not hasattr(item, 'graphene_type'):
-                    continue
-
-                if issubclass_safe(item.graphene_type, ModelFiltersType):
-                    filters_count += 1
-                elif issubclass_safe(item.graphene_type, ModelFiltersFieldType):
-                    filters_fields_count += 1
-                elif issubclass_safe(item.graphene_type, ModelFiltersRelationshipType):
-                    filters_relationships_count += 1
-                elif issubclass_safe(item.graphene_type, ModelLookupsType):
-                    lookups_count += 1
-                elif issubclass_safe(item.graphene_type, ModelLookupsFieldType):
-                    lookups_fields_count += 1
-                elif issubclass_safe(item.graphene_type, ModelLookupsRelationshipType):
-                    lookups_relationships_count += 1
-                elif issubclass_safe(item.graphene_type, ModelSortType):
-                    sort_count += 1
-                elif issubclass_safe(item.graphene_type, ModelAttrsType):
-                    attrs_count += 1
-
-            return {
-                'status': 'ok',
-                'tables_processed': tables_processed,
-                'tables_total': tables_total,
-                'types': types_count,
-                'filters': filters_count,
-                'filters_fields': filters_fields_count,
-                'filters_relationships': filters_relationships_count,
-                'lookups': lookups_count,
-                'lookups_fields': lookups_fields_count,
-                'lookups_relationships': lookups_relationships_count,
-                'sort': sort_count,
-                'attrs': attrs_count,
-                'get_schema_time': get_schema_time,
-                'memory_usage_approx': memory_usage_approx,
-                'memory_usage_approx_str': format_size(memory_usage_approx) if memory_usage_approx else None
-            }
-        else:
+        if not instance:
             return {
                 'status': 'pending',
                 'tables_processed': tables_processed,
                 'tables_total': tables_total
             }
+        
+        _type_map_values = list(instance._type_map.values())
+        types_count = len(_type_map_values)
+
+        # Use a dict to count each kind instead of many variables and elifs
+        counter = {
+            'filters': 0,
+            'filters_fields': 0,
+            'filters_relationships': 0,
+            'lookups': 0,
+            'lookups_fields': 0,
+            'lookups_relationships': 0,
+            'sort': 0,
+            'attrs': 0,
+        }
+        # Map class to key in counter dict
+        kind_checks = (
+            (ModelFiltersType, 'filters'),
+            (ModelFiltersFieldType, 'filters_fields'),
+            (ModelFiltersRelationshipType, 'filters_relationships'),
+            (ModelLookupsType, 'lookups'),
+            (ModelLookupsFieldType, 'lookups_fields'),
+            (ModelLookupsRelationshipType, 'lookups_relationships'),
+            (ModelSortType, 'sort'),
+            (ModelAttrsType, 'attrs'),
+        )
+
+        for item in _type_map_values:
+            graphene_type = getattr(item, 'graphene_type', None)
+            if graphene_type is None:
+                continue
+            for target_type, key in kind_checks:
+                if issubclass_safe(graphene_type, target_type):
+                    counter[key] += 1
+                    break
+
+        get_schema_time = schema.get('get_schema_time')
+        memory_usage_approx = schema.get('memory_usage_approx')
+        
+        return {
+            'status': 'ok',
+            'tables_processed': tables_processed,
+            'tables_total': tables_total,
+            'types': types_count,
+            'filters': counter['filters'],
+            'filters_fields': counter['filters_fields'],
+            'filters_relationships': counter['filters_relationships'],
+            'lookups': counter['lookups'],
+            'lookups_fields': counter['lookups_fields'],
+            'lookups_relationships': counter['lookups_relationships'],
+            'sort': counter['sort'],
+            'attrs': counter['attrs'],
+            'get_schema_time': get_schema_time,
+            'memory_usage_approx': memory_usage_approx,
+            'memory_usage_approx_str': format_size(memory_usage_approx) if memory_usage_approx else None,
+        }
 
     def map_tunnel(self, tunnel):
         if not tunnel:
             return
-
+        # Only access attributes once
+        local_bind_host = tunnel.local_bind_host
+        local_bind_port = tunnel.local_bind_port
+        ssh_host = tunnel.ssh_host
+        ssh_port = tunnel.ssh_port
         return {
             'is_active': tunnel.is_active,
-            'local_address': '{}:{}'.format(tunnel.local_bind_host, tunnel.local_bind_port),
-            'remote_address': '{}:{}'.format(tunnel.ssh_host, tunnel.ssh_port)
+            'local_address': f'{local_bind_host}:{local_bind_port}',
+            'remote_address': f'{ssh_host}:{ssh_port}'
         }
 
     def map_connection(self, connection):
+        # pull local variables up for less dict and attr lookup
         cache = connection['cache']
         MappedBase = connection['MappedBase']
+        classes = MappedBase.classes
         column_count = 0
         relationships_count = 0
 
-        for Model in MappedBase.classes:
+        for Model in classes:
             try:
                 mapper = inspect_uniform(Model)
-                column_count += len(mapper.columns)
-                relationships_count += len(mapper.relationships)
             except Exception as e:
                 sentry_controller.capture_exception(e)
+                continue
+            # add both lengths at once to minimize attribute accesses
+            columns = getattr(mapper, 'columns', [])
+            rels = getattr(mapper, 'relationships', [])
+            column_count += len(columns)
+            relationships_count += len(rels)
 
         graphql_schema = self.map_connection_graphql_schema(cache.get('graphql_schema'))
         graphql_schema_draft = self.map_connection_graphql_schema(cache.get('graphql_schema_draft'))
@@ -114,8 +129,8 @@ class StatusView(BaseAPIView):
         tunnel = self.map_tunnel(connection.get('tunnel'))
         last_request = connection.get('last_request')
         default_timezone_updated = connection.get('default_timezone_updated')
-
         reflect_memory_usage_approx = connection.get('reflect_memory_usage_approx')
+        default_timezone = connection.get('default_timezone')
 
         return {
             'id': connection['id'],
@@ -123,7 +138,7 @@ class StatusView(BaseAPIView):
             'params_id': connection['params_id'],
             'project': connection.get('project'),
             'token': connection.get('token'),
-            'tables': len(MappedBase.classes),
+            'tables': len(classes),
             'columns': column_count,
             'relationships': relationships_count,
             'graphql_schema': graphql_schema,
@@ -136,10 +151,10 @@ class StatusView(BaseAPIView):
             'reflect_memory_usage_approx': reflect_memory_usage_approx,
             'reflect_memory_usage_approx_str': format_size(reflect_memory_usage_approx) if reflect_memory_usage_approx else None,
             'reflect_metadata_dump': connection.get('reflect_metadata_dump'),
-            'default_timezone': str(connection['default_timezone']) if connection.get('default_timezone') else None,
+            'default_timezone': str(default_timezone) if default_timezone else None,
             'default_timezone_updated': default_timezone_updated.isoformat() if default_timezone_updated else None,
             'tunnel': tunnel,
-            'last_request': last_request.isoformat() if last_request else None
+            'last_request': last_request.isoformat() if last_request else None,
         }
 
     def map_pending_connection(self, pending_connection):
