@@ -78,7 +78,9 @@ class Configuration(object):
         return name.lower().replace('-', '')
 
     def clean_sso_applications(self, applications):
-        return dict(map(lambda x: (self.clean_sso_application_name(x[0]), x[1]), applications.items()))
+        # Use a dict comprehension for better performance and readability
+        clean_name = self.clean_sso_application_name
+        return {clean_name(k): v for k, v in applications.items()}
 
     def run_async(self, func, *args, **kwargs):
         func(*args, **kwargs)
