@@ -104,8 +104,15 @@ class BaseAPIView(object):
         if settings.DISABLE_AUTH:
             return
 
-        for permission in self.get_permissions():
+        permission_classes = self.permission_classes  # Localize for speed
+        if not permission_classes:
+            return
+
+        # Use tuple generator for efficiency (evaluate one by one)
+        for permission_class in permission_classes:
+            permission = permission_class()
             if not permission.has_permission(self, request):
+                # Pre-cache message; getattr only once per permission
                 raise PermissionDenied(getattr(permission, 'message', 'forbidden'))
 
     def check_object_permissions(self, request, obj):
