@@ -11,7 +11,7 @@ def load_strategy(request_handler, request, config):
 
 
 def load_backends_classes(backend_paths):
+    # Assumes backend_paths is an ordered sequence matching the order of backends.values()
     backends = load_backends(backend_paths, force_load=True)
-
-    return dict(map(lambda x: (backend_paths[x[0]], x[1]), enumerate(backends.values())))
+    return {path: backend for path, backend in zip(backend_paths, backends.values())}
 
