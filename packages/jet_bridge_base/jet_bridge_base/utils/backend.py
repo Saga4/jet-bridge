@@ -7,7 +7,8 @@ from jet_bridge_base.logger import logger
 
 
 def api_method_url(method):
-    return '{}/{}'.format(settings.API_BASE_URL, method)
+    # Use f-string for slightly faster string interpolation
+    return f'{settings.API_BASE_URL}/{method}'
 
 
 def is_project_token_activated(project_token):
