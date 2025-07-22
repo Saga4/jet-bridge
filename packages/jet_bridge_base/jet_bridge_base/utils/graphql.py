@@ -844,19 +844,21 @@ class GraphQLSchemaGenerator(object):
         return type('Model{}RecordAttrsType'.format(name), (ModelAttrsType,), attrs)
 
     def get_selections(self, info, path):
-        i = 0
         current_field = info.field_asts[0]
+        path_len = len(path)
 
-        for path_item in path:
-            for selection in current_field.selection_set.selections:
+        for idx, path_item in enumerate(path):
+            selections = current_field.selection_set.selections
+            # Use a dict for fast name lookup if selections are large and unique by name
+            for selection in selections:
                 if selection.name.value == path_item:
-                    if i == len(path) - 1:
+                    if idx == path_len - 1:
                         return selection.selection_set.selections
-                    else:
-                        current_field = selection
-                        break
-
-            i += 1
+                    current_field = selection
+                    break
+            else:
+                # Return early if not found
+                return None
 
     def resolve_model_list(self, MappedBase, Model, mapper, info, filters=None, lookups=None, sort=None, pagination=None, search=None):
         try:
