@@ -2,6 +2,7 @@ from .mongo_operator import MongoOperator
 
 
 class MongoColumn(object):
+
     def __init__(self, table, name, type, nullable=True, mixed_types=None, autoincrement=False, default=None,
                  server_default=None, foreign_keys=None, comment=None, params=None):
         self.table = table
@@ -13,15 +14,23 @@ class MongoColumn(object):
         self.autoincrement = autoincrement
         self.default = default
         self.server_default = server_default
-        self.foreign_keys = foreign_keys or list()
+        # Avoid unnecessary creation of empty list/dict
+        if foreign_keys is None:
+            self.foreign_keys = []
+        else:
+            self.foreign_keys = foreign_keys
         self.comment = comment
-        self.params = params or dict()
+        if params is None:
+            self.params = {}
+        else:
+            self.params = params
 
     @staticmethod
     def deserialize(table, obj):
+        # Remove 'name' and 'type' in one goto for slight speedup and less attr lookup
         name = obj.pop('name')
-        type = obj.pop('type')
-        return MongoColumn(table, name, type, **obj)
+        typ = obj.pop('type')
+        return MongoColumn(table, name, typ, **obj)
 
     def serialize(self):
         return {
