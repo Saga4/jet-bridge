@@ -51,7 +51,8 @@ class BaseAPIView(object):
         return self.track_queries and (settings.TRACK_QUERY_SLOW_TIME or settings.TRACK_QUERY_HIGH_MEMORY)
 
     def track_query_start(self, request):
-        if not self.is_track_queries_enabled():
+        # Fast path: skip function call overhead if not tracking
+        if not (self.track_queries and _TRACK_QUERIES_GLOBAL):
             return
 
         request.start_track()
@@ -215,3 +216,5 @@ class APIView(BaseAPIView):
         if request.session is not None:
             request.session.close()
             request.session = None
+
+_TRACK_QUERIES_GLOBAL = bool(settings.TRACK_QUERY_SLOW_TIME or settings.TRACK_QUERY_HIGH_MEMORY)
