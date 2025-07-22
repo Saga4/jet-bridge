@@ -94,27 +94,25 @@ class ProxyRequestSerializer(Serializer):
     def resolve_secret_tokens(self, names, project_name, environment_name, resource, draft):
         request = self.context.get('request')
         instances = {}
-        unresolved = names[:]
+        unresolved = set(names)
 
+        # Try to resolve from SSO extra data first
+        remove_names = []
         for name in unresolved:
-            regex = re.search('sso\.(?P<sso>\w+)\.(?P<token>\w+)', name)
-
+            regex = _SSO_ACCESS_TOKEN_REGEX.search(name)
             if not regex:
                 continue
 
             matches = regex.groupdict()
-
             if matches['token'] != 'access_token':
                 continue
 
             app = configuration.clean_sso_application_name(matches['sso'])
             config = settings.SSO_APPLICATIONS.get(app)
-
             if not config:
                 continue
 
             extra_data_key = '_'.join(['extra_data', app])
-
             try:
                 if settings.COOKIE_COMPRESS:
                     extra_data_str = configuration.session_get(request, extra_data_key, decode=False, secure=False)
@@ -124,31 +122,36 @@ class ProxyRequestSerializer(Serializer):
 
                 extra_data = json.loads(extra_data_str)
 
-                if matches['token'] not in extra_data:
+                # Only interested in 'access_token'
+                if 'access_token' not in extra_data:
                     continue
 
-                if matches['token'] == 'access_token':
-                    instances[name] = self.get_access_token(app, config, extra_data)
-                else:
-                    instances[name] = extra_data.get(matches['token'])
+                instances[name] = self.get_access_token(app, config, extra_data)
+                remove_names.append(name)
             except Exception:
                 pass
 
-        unresolved = list(filter(lambda x: x not in instances.keys(), unresolved))
+        for name in remove_names:
+            unresolved.discard(name)
 
-        if len(unresolved):
+        if unresolved:
             token_prefix = 'Token '
             authorization = request.headers.get('AUTHORIZATION', '')
             user_token = authorization[len(token_prefix):] if authorization.startswith(token_prefix) else None
 
-            for item in get_secret_tokens(project_name, environment_name, resource, draft, settings.TOKEN, user_token):
-                if item['name'] not in unresolved:
-                    continue
-                instances[item['name']] = item['value']
+            token_instances = {
+                item['name']: item['value']
+                for item in get_secret_tokens(
+                    project_name, environment_name, resource, draft, settings.TOKEN, user_token
+                )
+                if item['name'] in unresolved
+            }
+            instances.update(token_instances)
+            unresolved -= set(token_instances.keys())
 
+        # Fill in empty string for tokens still unresolved
         for name in unresolved:
-            if name not in instances:
-                instances[name] = ''
+            instances[name] = ''
 
         return instances
 
@@ -157,7 +160,7 @@ class ProxyRequestSerializer(Serializer):
             if 'project' not in attrs:
                 raise ValidationError('"project" is required when specifying "resource"')
 
-        if 'secret_tokens' in attrs and len(attrs['secret_tokens']):
+        if 'secret_tokens' in attrs and attrs['secret_tokens']:
             if 'resource' not in attrs:
                 raise ValidationError('"resource" is required when specifying "secret_tokens"')
             names = attrs['secret_tokens'].split(',')
@@ -170,8 +173,9 @@ class ProxyRequestSerializer(Serializer):
                 attrs.get('draft')
             )
 
-        if isinstance(attrs['headers'], dict):
-            attrs['headers'] = dict([[key, str(value)] for key, value in attrs['headers'].items()])
+        if isinstance(attrs.get('headers'), dict):
+            # Convert all header values to str efficiently
+            attrs['headers'] = {key: str(value) for key, value in attrs['headers'].items()}
 
         return attrs
 
@@ -253,3 +257,5 @@ class ProxyRequestSerializer(Serializer):
             return response
         except Exception as e:
             raise ValidationError(e)
+
+_SSO_ACCESS_TOKEN_REGEX = re.compile(r'sso\.(?P<sso>\w+)\.(?P<token>\w+)')
