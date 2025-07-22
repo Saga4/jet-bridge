@@ -61,7 +61,13 @@ class MediaCache(object):
         return '{}{}'.format(hashlib.sha256(path.encode('utf8')).hexdigest(), extension)
 
     def full_path(self, path):
-        return os.path.join(self.dir, self.filename(path))
+        splitext = os.path.splitext
+        sha256 = hashlib.sha256
+        dir_ = self.dir  # cache attr lookup
+
+        extension = splitext(path)[1]
+        digest = sha256(path.encode('utf8')).hexdigest()
+        return os.path.join(dir_, f'{digest}{extension}')
 
     def exists(self, path):
         thumbnail_full_path = self.full_path(path)
