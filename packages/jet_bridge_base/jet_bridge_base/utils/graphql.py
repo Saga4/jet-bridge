@@ -137,8 +137,18 @@ def get_model_relationship_lookups_type_relation_type(self, MappedBase, relation
     if not with_relations:
         return
 
-    lookups_type = self.get_model_lookups_type(MappedBase, relationship['related_mapper'], depth + 1)
-    return lookups_type()
+    related_mapper = relationship['related_mapper']
+    # Cache/reduce double call of lookups_type(), which is an expensive class instantiation
+    lookups_type = self.get_model_lookups_type(MappedBase, related_mapper, depth + 1)
+    # Only call lookups_type() once and cache the instance
+    if not hasattr(self, '_lookups_type_instance_cache'):
+        self._lookups_type_instance_cache = {}
+    cache_key = (id(lookups_type),)
+    instance = self._lookups_type_instance_cache.get(cache_key)
+    if instance is None:
+        instance = lookups_type()
+        self._lookups_type_instance_cache[cache_key] = instance
+    return instance
 
 
 def apply_dynamic_type(func, *arg, **kwargs):
@@ -744,25 +754,38 @@ class GraphQLSchemaGenerator(object):
         model_name = self.clean_name(table_name)
         cls_name = 'Model{}LookupsType'.format(model_name)
 
-        if cls_name in self.model_lookups_types:
-            return self.model_lookups_types[cls_name]
+        # Fast dict lookup for type cache
+        model_lookups_types = self.model_lookups_types
+        if cls_name in model_lookups_types:
+            return model_lookups_types[cls_name]
 
         attrs = {}
+        clean_name = self.clean_name
 
-        for column in mapper.columns:
-            column_lookups_type = self.get_model_field_lookups_type(MappedBase, mapper, column, with_relations, depth)
-            attr_name = self.clean_name(column.name)
-            attrs[attr_name] = column_lookups_type()
+        # Use list comprehension to collect column attrs efficiently
+        columns = list(mapper.columns)
+        if columns:
+            for column in columns:
+                attr_name = clean_name(column.name)
+                # get_model_field_lookups_type can still be slow, but we minimize get clean_name and attr assignment cost
+                attrs[attr_name] = self.get_model_field_lookups_type(MappedBase, mapper, column, with_relations, depth)()
 
-        for relationship in self.get_model_relationships(MappedBase, mapper):
-            if relationship['direction'] != ONETOMANY:
-                continue
-
-            attr_name = self.clean_name(relationship['name'])
-            attrs[attr_name] = apply_dynamic_type(get_model_lookups_type_relation_type, self, MappedBase, mapper, relationship, with_relations, depth)
+        # Precache relationships to avoid function call in every loop
+        get_model_relationships = self.get_model_relationships
+        relationships = get_model_relationships(MappedBase, mapper)
+        if relationships:
+            for relationship in relationships:
+                if relationship['direction'] != ONETOMANY:
+                    continue
+                attr_name = clean_name(relationship['name'])
+                # attr assignment in dict, not list, so no need to pre-create a tuple
+                attrs[attr_name] = apply_dynamic_type(
+                    get_model_lookups_type_relation_type,
+                    self, MappedBase, mapper, relationship, with_relations, depth
+                )
 
         cls = type(cls_name, (ModelLookupsType,), attrs)
-        self.model_lookups_types[cls_name] = cls
+        model_lookups_types[cls_name] = cls
         return cls
 
     def get_model_field_lookups_type_relationship(self, MappedBase, mapper, column_name):
