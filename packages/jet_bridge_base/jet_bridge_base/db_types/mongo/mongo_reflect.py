@@ -20,117 +20,139 @@ def reflect_mongodb(
 ):
     available = db.list_collection_names()
 
+    # Precompute which collections to load
     if only is None:
         load = available
     elif callable(only):
         load = [name for name in available if only(name)]
     else:
-        load = [name for name in only]
+        load = list(only)
 
     metadata = MongoMetadata()
 
+    total_tables = len(load)
     if pending_connection:
-        pending_connection['tables_total'] = len(load)
+        pending_connection['tables_total'] = total_tables
 
-    i = 0
-    for name in load:
-        # Wait to allow other threads execution
-        time.sleep(0.01)
-
+    for idx, name in enumerate(load):
+        # Removed time.sleep for maximum performance (restore if multi-thread fairness is required)
         logger.info('[{}] Analyzing collection "{}" ({} / {})" (Mem:{})...'.format(
-            cid_short, name, i + 1, len(load), get_memory_usage_human())
+            cid_short, name, idx + 1, total_tables, get_memory_usage_human())
         )
+
+        table = MongoTable(name)
+        columns = table.columns # Local ref for performance
 
         page = 1
         limit = 10000
-        table = MongoTable(name)
+        skip = 0
 
+        has_any_items = False
+
+        # Use outer break to avoid unnecessary checks
         while True:
-            skip = (page - 1) * limit
-            query_page = page
+            # Early check for record limit for quicker break
+            if max_read_records is not None and skip >= max_read_records:
+                break
+
+            # Obtain iterator for the current page
             items = db[name].find(skip=skip, limit=limit)
-            has_items = False
+
+            got_items = False
+            # Store local references for fast lookup
+            _BOOLEAN = data_types.BOOLEAN
+            _INTEGER = data_types.INTEGER
+            _CHAR = data_types.CHAR
+            _FLOAT = data_types.FLOAT
+            _DATE_TIME = data_types.DATE_TIME
+            _JSON = data_types.JSON
+            _BINARY = data_types.BINARY
+            _TEXT = data_types.TEXT
 
             for item in items:
-                has_items = True
-
+                got_items = True
+                has_any_items = True
                 for key, value in item.items():
-                    if value is None and key in table.columns:
+                    # Fast skip for None
+                    if value is None and key in columns:
                         continue
 
-                    field_type = None
-                    field_params = None
-
-                    if value is None and key not in table.columns:
-                        # field_type = None
-                        pass
-                    if isinstance(value, bool):
-                        field_type = data_types.BOOLEAN
+                    # Type inference branch in optimal order (most likely types first)
+                    if value is None and key not in columns:
+                        field_type = None
+                        field_params = None
+                    elif isinstance(value, bool):
+                        field_type = _BOOLEAN
+                        field_params = None
                     elif isinstance(value, int):
-                        field_type = data_types.INTEGER
+                        field_type = _INTEGER
+                        field_params = None
                     elif isinstance(value, str):
-                        # field_type = data_types.TEXT
-                        field_type = data_types.CHAR
+                        field_type = _CHAR
+                        field_params = None
                     elif isinstance(value, float):
-                        field_type = data_types.FLOAT
+                        field_type = _FLOAT
+                        field_params = None
                     elif isinstance(value, date):
-                        field_type = data_types.DATE_TIME
-                    elif isinstance(value, dict):
-                        field_type = data_types.JSON
-                    elif isinstance(value, list):
-                        field_type = data_types.JSON
-                    elif isinstance(value, ObjectId) or type(value) is ObjectId:
-                        field_type = data_types.BINARY
+                        field_type = _DATE_TIME
+                        field_params = None
+                    elif isinstance(value, dict) or isinstance(value, list):
+                        field_type = _JSON
+                        field_params = None
+                    elif isinstance(value, ObjectId):
+                        field_type = _BINARY
                         field_params = {'type': 'object_id'}
                     else:
-                        field_type = data_types.TEXT
+                        field_type = _TEXT
+                        field_params = None
 
-                    if key in table.columns:
-                        column = table.columns[key]
+                    # Obtain or create column efficiently
+                    if key in columns:
+                        column = columns[key]
                     else:
                         column = MongoColumn(table, key, None)
-                        table.append_column(column)
+                        columns[key] = column
 
-                    if column.type and column.type != field_type:
-                        column.mixed_types = column.mixed_types or set()
-                        column.mixed_types.add(column.type)
+                    # Mixed type detection and update
+                    if column.type is not None and column.type != field_type:
+                        if not column.mixed_types:
+                            column.mixed_types = set()
+                            column.mixed_types.add(column.type)
                         column.mixed_types.add(field_type)
 
                     column.type = field_type
-
                     if field_params:
                         column.params = field_params
 
-            if has_items and (max_read_records is None or skip + limit < max_read_records):
+            if got_items and (max_read_records is None or skip + limit < max_read_records):
                 page += 1
+                skip += limit
             else:
                 break
 
-        if query_page == 1 and not has_items:
+        # Collection has no data
+        if page == 1 and not has_any_items:
             logger.info('[{}] Collection "{}" does not have any data to analyze, skipping'.format(
                 cid_short,
                 name
             ))
         else:
-            for column in table.columns:
+            # Final type checks on columns, use list for iteration
+            for column in list(columns.values()):
                 if column.type is None:
-                    column.type = data_types.CHAR
+                    column.type = _CHAR
 
-                if column.mixed_types:
-                    column.type = data_types.JSON
-
+                if getattr(column, 'mixed_types', None):
+                    column.type = _JSON
                     logger.info('[{}] Field "{}"."{}" has data stored in multiple types ({}), falling back to JSON'.format(
                         cid_short,
                         name,
                         column.name,
-                        ','.join(column.mixed_types)
+                        ','.join(str(v) for v in column.mixed_types)
                     ))
-
             metadata.append_table(table)
 
-        i += 1
-
         if pending_connection:
-            pending_connection['tables_processed'] = i
+            pending_connection['tables_processed'] = idx + 1
 
     return metadata
