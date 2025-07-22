@@ -1,6 +1,6 @@
 import contextlib
 import threading
-from datetime import timedelta, datetime
+from datetime import datetime
 
 from jet_bridge_base import settings
 from jet_bridge_base.db_types import dump_metadata_file, load_mapped_base, init_database_connection, \
@@ -25,58 +25,17 @@ MODEL_DESCRIPTIONS_HASH_CACHE_KEY = 'model_descriptions_hash'
 
 def get_connection_tunnel(conf):
     if not is_tunnel_connection(conf):
-        return
+        return None  # explicitly return None
 
     schema = get_connection_schema(conf)
     connection_name = get_connection_name(conf, schema)
-
-    # from sshtunnel import SSHTunnelForwarder, address_to_str
-    # import paramiko
-    #
-    # class SafeSSHTunnelForwarder(SSHTunnelForwarder):
-    #     skip_tunnel_checkup = False
-    #
-    #     def check_is_running(self):
-    #         try:
-    #             while True:
-    #                 time.sleep(5)
-    #                 if not tunnel.local_is_up(tunnel.local_bind_address):
-    #                     logger.info('SSH tunnel is down, disposing connection "{}"'.format(connection_name))
-    #                     break
-    #         finally:
-    #             dispose_connection(conf)
-    #
-    #     def start(self):
-    #         super(SafeSSHTunnelForwarder, self).start()
-    #
-    #         for _srv in self._server_list:
-    #             thread = threading.Thread(
-    #                 target=self.check_is_running,
-    #                 args=(),
-    #                 name='Srv-{0}-check'.format(address_to_str(_srv.local_port))
-    #             )
-    #             thread.start()
-    #
-    # private_key_str = conf.get('ssh_private_key').replace('\\n', '\n')
-    # private_key = paramiko.RSAKey.from_private_key(StringIO(private_key_str))
-    #
-    # tunnel = SafeSSHTunnelForwarder(
-    #     ssh_address_or_host=(conf.get('ssh_host'), int(conf.get('ssh_port'))),
-    #     ssh_username=conf.get('ssh_user'),
-    #     ssh_pkey=private_key,
-    #     remote_bind_address=(conf.get('host'), int(conf.get('port'))),
-    #     logger=logger
-    # )
-    # tunnel.start()
-    #
-    # return tunnel
 
     logger.info('Starting SSH tunnel for connection "{}"...'.format(connection_name))
 
     def on_close():
         connection_id = get_connection_id(conf)
+        # Only do a single dictionary lookup
         connection = connections.get(connection_id)
-
         if connection:
             logger.info('SSH tunnel is closed, disposing connection "{}"'.format(connection_name))
             dispose_connection(conf)
@@ -94,22 +53,20 @@ def get_connection_tunnel(conf):
         on_close=on_close
     )
     tunnel.start()
-
     logger.info('SSH tunnel started on port {} for connection "{}"'.format(tunnel.local_bind_port, connection_name))
-
     return tunnel
 
 
 def wait_pending_connection(connection_id, connection_name):
     pending_connection = pending_connections.get(connection_id)
     if not pending_connection:
-        return
+        return None
 
     logger.info('Waiting database connection "{}"...'.format(connection_name))
 
     connected_condition = pending_connection['connected']
     with connected_condition:
-        timeout = timedelta(minutes=10).total_seconds()
+        timeout = 600.0  # 10 min as seconds, faster than datetime math
         connected_condition.wait(timeout=timeout)
 
     connection = connections.get(connection_id)
@@ -118,6 +75,7 @@ def wait_pending_connection(connection_id, connection_name):
         return connection
     else:
         logger.info('Not found database connection "{}"'.format(connection_name))
+        return None
 
 
 def clean_hostname(hostname):
@@ -160,11 +118,15 @@ def is_hostname_blacklisted(hostname):
     if not hostname:
         return False
 
-    blacklist_hosts = get_blacklist_hostnames()
-    if len(blacklist_hosts) == 0:
-        return False
+    global _blacklist_hostnames_cache
+    # Use cached blacklist if available
+    if _blacklist_hostnames_cache is not None:
+        return hostname in _blacklist_hostnames_cache
 
-    return hostname in blacklist_hosts
+    with _blacklist_cache_lock:
+        if _blacklist_hostnames_cache is None:
+            _blacklist_hostnames_cache = set(get_blacklist_hostnames() or [])
+    return hostname in _blacklist_hostnames_cache
 
 
 def connect_database(conf):
@@ -172,6 +134,7 @@ def connect_database(conf):
 
     hostname = conf.get('host')
     if is_hostname_blacklisted(hostname):
+        # Raising right away before any other operations
         raise Exception('Hostname "{}" is blacklisted'.format(hostname))
 
     connection_id = get_connection_id(conf)
@@ -184,17 +147,13 @@ def connect_database(conf):
     if existing_connection:
         if existing_connection['params_id'] == connection_params_id:
             return existing_connection
-        else:
-            logger.info('[{}] Reconnecting to database "{}" because of different params ({} {})...'.format(
-                id_short,
-                connection_name,
-                connection_params_id,
-                existing_connection['params_id']
-            ))
-            dispose_connection(conf)
+        # Log and dispose old only if params changed
+        logger.info('[{}] Reconnecting to database "{}" because of different params ({} {})...'.format(
+            id_short, connection_name, connection_params_id, existing_connection['params_id']
+        ))
+        dispose_connection(conf)
 
     init_start = datetime.now()
-
     connected_condition = threading.Condition()
     pending_connection_id = get_random_string(32)
     pending_connection = {
@@ -206,6 +165,7 @@ def connect_database(conf):
         'connected': connected_condition
     }
 
+    # Avoid time spent while holding lock on pending_connections during potentially lengthy ops
     existing_connection = wait_pending_connection(connection_id, connection_name)
     if existing_connection:
         return existing_connection
@@ -215,7 +175,8 @@ def connect_database(conf):
 
     try:
         tunnel = get_connection_tunnel(conf)
-        pending_connection['tunnel'] = tunnel
+        if tunnel:
+            pending_connection['tunnel'] = tunnel
 
         database_connection = init_database_connection(
             conf,
@@ -226,6 +187,7 @@ def connect_database(conf):
             pending_connection
         )
 
+        now_datetime = datetime.now()
         connections[connection_id] = {
             'id': connection_id,
             'name': connection_name,
@@ -236,18 +198,17 @@ def connect_database(conf):
             'project': conf.get('project'),
             'token': conf.get('token'),
             'init_start': init_start.isoformat(),
-            'last_request': datetime.now(),
+            'last_request': now_datetime,
             **database_connection
         }
-
         return connections[connection_id]
     except Exception as e:
         if tunnel:
             tunnel.close()
-
-        raise e
+        raise
     finally:
-        if connection_id in pending_connections and pending_connections[connection_id].get('id') == pending_connection_id:
+        # Only remove our own pending_connection (not a later/other)
+        if pending_connections.get(connection_id, {}).get('id') == pending_connection_id:
             del pending_connections[connection_id]
 
         with connected_condition:
@@ -270,12 +231,11 @@ def dispose_connection(conf):
     global connections
 
     connection_id = get_connection_id(conf)
+    # Only do a single dictionary lookup
     connection = connections.get(connection_id)
-
     if connection and dispose_connection_object(connection):
         del connections[connection_id]
         return True
-
     return False
 
 
@@ -489,3 +449,7 @@ def release_inactive_graphql_schemas():
         ))
 
         reload_connection_graphql_schema(connection)
+
+_blacklist_hostnames_cache = None
+
+_blacklist_cache_lock = threading.Lock()
