@@ -78,9 +78,9 @@ def sql_to_map_type(value):
 
 
 def map_to_sql_type(value):
-    for rule in map_data_types:
-        if rule['map_type'] == value:
-            return rule['sql_type']
+    sql_type = _map_type_to_sql_type.get(value)
+    if sql_type is not None:
+        return sql_type
     logger.warning('Unknown database type: {}'.format(str(value)))
     return default_sql_type
 
@@ -113,3 +113,5 @@ def get_sql_type_convert(value):
         if is_instance_or_subclass(value, rule['sql_type']):
             return rule.get('convert')
     logger.warning('Unknown database type: {}'.format(str(value)))
+
+_map_type_to_sql_type = {rule['map_type']: rule['sql_type'] for rule in map_data_types}
