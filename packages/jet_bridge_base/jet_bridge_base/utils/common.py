@@ -93,11 +93,13 @@ def unique(arr):
 
 def flatten(arr):
     result = []
+    append = result.append
+    extend = result.extend
     for item in arr:
-        if isinstance(item, list):
-            result.extend(item)
+        if type(item) is list:
+            extend(item)
         else:
-            result.append(item)
+            append(item)
     return result
 
 
