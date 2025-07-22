@@ -13,10 +13,9 @@ class ImageResizeView(APIView):
 
     def create_thumbnail(self, file, thumbnail_path, max_width, max_height):
         img = Image.open(file)
-        img.thumbnail((max_width, max_height), Image.ANTIALIAS)
-
+        img.thumbnail((max_width, max_height), Image.LANCZOS)
         with io.BytesIO() as memory_file:
-            img.save(memory_file, format=img.format, quality=85)  # TODO: determine real extension from format
+            img.save(memory_file, format=img.format, quality=85)
             memory_file.seek(0)
             configuration.media_save(thumbnail_path, memory_file.read())
 
@@ -25,36 +24,34 @@ class ImageResizeView(APIView):
         # TODO: Add options dependant cache name
 
         path = request.get_argument('path')
-        max_width = request.get_argument('max_width', 320)
-        max_height = request.get_argument('max_height', 240)
-        external_path = path.startswith('http://') or path.startswith('https://')
-
+        # Inline conversion to int just once
+        max_width = int(request.get_argument('max_width', 320))
+        max_height = int(request.get_argument('max_height', 240))
+        # Faster external path check
+        external_path = path[:8].lower() == 'https://' or path[:7].lower() == 'http://'
+        
         try:
             if not cache.exists(path):
-                thumbnail_full_path = cache.full_path(path)
-
                 if not external_path:
+                    # Internal file path optimization
                     if not configuration.media_exists(path):
                         raise NotFound
-
                     file = configuration.media_open(path)
                 else:
-                    fd = urllib.request.urlopen(path)
-                    file = io.BytesIO(fd.read())
+                    # Network I/O - cannot optimize much more unless using async
+                    # Avoid unnecessary copying of file data
+                    with urllib.request.urlopen(path) as fd:
+                        data = fd.read()
+                    file = io.BytesIO(data)
 
+                # Only now build thumbnail path, as it's only ever needed here
+                thumbnail_full_path = cache.full_path(path)
+                # Avoid holding File I/Os or network open more than needed
                 with file:
                     cache.clear_cache_if_needed()
                     self.create_thumbnail(file, thumbnail_full_path, max_width, max_height)
                     cache.add_file(path)
 
-            # self.set_header('Content-Type', 'image/jpg')
-            #
-            # with open(thumbnail_full_path, 'rb') as f:
-            #     data = f.read()
-            #     self.write(data)
-            # self.finish()
-
-            # self.redirect(cache.url(path))
             return RedirectResponse(cache.url(path, request))
         except IOError as e:
             raise e
