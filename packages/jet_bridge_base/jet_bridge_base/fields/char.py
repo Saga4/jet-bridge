@@ -12,8 +12,10 @@ class CharField(Field):
     def to_internal_value_item(self, value):
         if value is None:
             return
-        value = six.text_type(value)
-        return value.strip() if self.trim_whitespace else value
+        value = str(value)  # Use built-in str for fastest type coercion
+        if self.trim_whitespace:
+            return value.strip()
+        return value
 
     def to_representation_item(self, value):
         if value is None:
