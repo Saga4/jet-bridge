@@ -6,10 +6,14 @@ from .mongo_column import MongoColumn
 class MongoTable(object):
     def __init__(self, name, columns=None, comment=None, schema=None):
         self.name = name
-        self.columns = CollectionDict(map(lambda x: (
-            x['name'],
-            MongoColumn.deserialize(self, x)
-        ), columns)) if columns else CollectionDict()
+        if columns:
+            # Use a dict comprehension for faster and clearer construction
+            self.columns = CollectionDict({
+                x['name']: MongoColumn.deserialize(self, x)
+                for x in columns
+            })
+        else:
+            self.columns = CollectionDict()
         self.comment = comment
         self.schema = schema
 
@@ -18,6 +22,7 @@ class MongoTable(object):
 
     @staticmethod
     def deserialize(obj):
+        # No change, as .pop is probably required (don't copy unnecessarily)
         name = obj.pop('name')
         return MongoTable(name, **obj)
 
