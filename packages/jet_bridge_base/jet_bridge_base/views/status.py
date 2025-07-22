@@ -21,67 +21,82 @@ class StatusView(BaseAPIView):
         if not schema:
             return {'status': 'no_schema'}
 
+        # Unpack relevant fields to locals for small speedup
         instance = schema.get('instance')
         tables_processed = schema.get('tables_processed', 0)
         tables_total = schema.get('tables_total')
 
-        if instance:
-            types_count = len(instance._type_map.values())
-            filters_count = 0
-            filters_fields_count = 0
-            filters_relationships_count = 0
-            lookups_count = 0
-            lookups_fields_count = 0
-            lookups_relationships_count = 0
-            sort_count = 0
-            attrs_count = 0
-            get_schema_time = schema.get('get_schema_time')
-            memory_usage_approx = schema.get('memory_usage_approx')
-
-            for item in instance._type_map.values():
-                if not hasattr(item, 'graphene_type'):
-                    continue
-
-                if issubclass_safe(item.graphene_type, ModelFiltersType):
-                    filters_count += 1
-                elif issubclass_safe(item.graphene_type, ModelFiltersFieldType):
-                    filters_fields_count += 1
-                elif issubclass_safe(item.graphene_type, ModelFiltersRelationshipType):
-                    filters_relationships_count += 1
-                elif issubclass_safe(item.graphene_type, ModelLookupsType):
-                    lookups_count += 1
-                elif issubclass_safe(item.graphene_type, ModelLookupsFieldType):
-                    lookups_fields_count += 1
-                elif issubclass_safe(item.graphene_type, ModelLookupsRelationshipType):
-                    lookups_relationships_count += 1
-                elif issubclass_safe(item.graphene_type, ModelSortType):
-                    sort_count += 1
-                elif issubclass_safe(item.graphene_type, ModelAttrsType):
-                    attrs_count += 1
-
-            return {
-                'status': 'ok',
-                'tables_processed': tables_processed,
-                'tables_total': tables_total,
-                'types': types_count,
-                'filters': filters_count,
-                'filters_fields': filters_fields_count,
-                'filters_relationships': filters_relationships_count,
-                'lookups': lookups_count,
-                'lookups_fields': lookups_fields_count,
-                'lookups_relationships': lookups_relationships_count,
-                'sort': sort_count,
-                'attrs': attrs_count,
-                'get_schema_time': get_schema_time,
-                'memory_usage_approx': memory_usage_approx,
-                'memory_usage_approx_str': format_size(memory_usage_approx) if memory_usage_approx else None
-            }
-        else:
+        if not instance:
             return {
                 'status': 'pending',
                 'tables_processed': tables_processed,
                 'tables_total': tables_total
             }
+
+        # Collect all fields upfront
+        get_schema_time = schema.get('get_schema_time')
+        memory_usage_approx = schema.get('memory_usage_approx')
+
+        type_map_values = list(instance._type_map.values())
+
+        # Bind frequently-used functions and types locally
+        _issubclass_safe = issubclass_safe
+        _hasattr = hasattr
+
+        # Prepare tuple of (type, counter_name) for mapping
+        _type_predicates = (
+            (ModelFiltersType, 'filters_count'),
+            (ModelFiltersFieldType, 'filters_fields_count'),
+            (ModelFiltersRelationshipType, 'filters_relationships_count'),
+            (ModelLookupsType, 'lookups_count'),
+            (ModelLookupsFieldType, 'lookups_fields_count'),
+            (ModelLookupsRelationshipType, 'lookups_relationships_count'),
+            (ModelSortType, 'sort_count'),
+            (ModelAttrsType, 'attrs_count')
+        )
+        counter_names = [name for _, name in _type_predicates]
+        counts = dict.fromkeys(counter_names, 0)
+
+        # Cache subclass results per graphene_type to reduce issubclass_safe calls
+        subclass_cache = {}
+
+        for item in type_map_values:
+            # Optimize check -- skip lacking graphene_type
+            if not _hasattr(item, 'graphene_type'):
+                continue
+            gtype = item.graphene_type
+            if gtype in subclass_cache:
+                cache_val = subclass_cache[gtype]
+            else:
+                # Find first predicate matched, in order (preserving logic)
+                cache_val = None
+                for predicate, name in _type_predicates:
+                    if _issubclass_safe(gtype, predicate):
+                        cache_val = name
+                        break
+                subclass_cache[gtype] = cache_val
+            if cache_val:
+                counts[cache_val] += 1
+
+        types_count = len(type_map_values)
+
+        return {
+            'status': 'ok',
+            'tables_processed': tables_processed,
+            'tables_total': tables_total,
+            'types': types_count,
+            'filters': counts['filters_count'],
+            'filters_fields': counts['filters_fields_count'],
+            'filters_relationships': counts['filters_relationships_count'],
+            'lookups': counts['lookups_count'],
+            'lookups_fields': counts['lookups_fields_count'],
+            'lookups_relationships': counts['lookups_relationships_count'],
+            'sort': counts['sort_count'],
+            'attrs': counts['attrs_count'],
+            'get_schema_time': get_schema_time,
+            'memory_usage_approx': memory_usage_approx,
+            'memory_usage_approx_str': format_size(memory_usage_approx) if memory_usage_approx else None
+        }
 
     def map_tunnel(self, tunnel):
         if not tunnel:
