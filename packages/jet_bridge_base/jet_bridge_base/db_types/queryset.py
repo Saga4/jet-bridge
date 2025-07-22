@@ -138,14 +138,8 @@ def get_sql_aggregate_func_by_name(name, column):
 def get_mongo_aggregate_func_by_name(name, column):
     if name == 'count':
         return {'$count': {}}
-    elif name == 'sum':
-        return {'$sum': '${}'.format(column.name)}
-    elif name == 'min':
-        return {'$min': '${}'.format(column.name)}
-    elif name == 'max':
-        return {'$max': '${}'.format(column.name)}
-    elif name == 'avg':
-        return {'$avg': '${}'.format(column.name)}
+    elif name in ('sum', 'min', 'max', 'avg'):
+        return {f'${name}': f'${column.name}'}
 
 
 def queryset_aggregate(Model, qs, value):
