@@ -2,6 +2,7 @@ import os
 import hashlib
 
 from jet_bridge_base.configuration import configuration
+from functools import lru_cache
 
 
 class MediaCache(object):
@@ -60,7 +61,10 @@ class MediaCache(object):
         extension = os.path.splitext(path)[1]
         return '{}{}'.format(hashlib.sha256(path.encode('utf8')).hexdigest(), extension)
 
+    @lru_cache(maxsize=4096)
     def full_path(self, path):
+        # Because self.dir is constant and from the base class, using self.dir doesn't incur much overhead,
+        # but inline for slightly faster lookup if needed.
         return os.path.join(self.dir, self.filename(path))
 
     def exists(self, path):
