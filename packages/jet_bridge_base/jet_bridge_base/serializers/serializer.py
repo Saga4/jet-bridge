@@ -1,3 +1,7 @@
+import six
+from jet_bridge_base.exceptions.validation_error import ValidationError
+from jet_bridge_base.fields.field import Field, empty
+
 try:
     from collections.abc import Mapping, Iterable
     from collections import OrderedDict
@@ -77,18 +81,26 @@ class Serializer(Field):
             if self.required:
                 # raise ValidationError('Field is required')
                 self.error('required')
+        
+        # Use local variables for repeatedly accessed attributes/methods
+        to_internal_value = self.to_internal_value
+        validate = self.validate
+        many = self.many
 
-        value = self.to_internal_value(value)
+        # to_internal_value is a bottleneck; keep minimal attribute lookups
+        value = to_internal_value(value)
 
-        if self.many:
+        if many:
+            # Use list comprehension instead of map+lambda for speed
             try:
-                value = list(map(lambda x: self.validate(x), value))
-                assert value is not None, '.validate() should return the validated data'
+                validated = [validate(x) for x in value]
+                assert validated is not None, '.validate() should return the validated data'
+                value = validated
             except ValidationError as e:
                 raise e
         else:
             try:
-                value = self.validate(value)
+                value = validate(value)
                 assert value is not None, '.validate() should return the validated data'
             except ValidationError as e:
                 raise e
