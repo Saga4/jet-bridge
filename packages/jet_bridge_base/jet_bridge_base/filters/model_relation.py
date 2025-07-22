@@ -7,12 +7,8 @@ from jet_bridge_base.filters.filter import EMPTY_VALUES
 
 
 def filter_search_field(field):
-    allowed_fields = [
-        sqlalchemy.String,
-        sqlalchemy.JSON,
-    ]
-
-    return isinstance(field.type, tuple(allowed_fields))
+    # Check if the field's type is among the allowed types
+    return isinstance(field.type, _ALLOWED_FIELDS)
 
 
 def get_model_relation_filter(request, Model):
@@ -48,3 +44,5 @@ def get_model_relation_filter(request, Model):
             return qs
 
     return ModelRelationFilter
+
+_ALLOWED_FIELDS = (sqlalchemy.String, sqlalchemy.JSON)
