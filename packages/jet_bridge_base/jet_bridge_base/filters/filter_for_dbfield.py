@@ -173,14 +173,25 @@ FILTER_FOR_MAP_TYPE_DEFAULT = FILTER_FOR_MAP_TYPE[data_types.CHAR]
 
 
 def filter_for_data_type(value):
-    for data_type, filter_data in FILTER_FOR_DBFIELD.items():
-        if isinstance(value, data_type):
-            return filter_data
-    return FILTER_FOR_DBFIELD_DEFAULT
+    value_cls = type(value)
+    try:
+        return _FILTER_TYPE_CACHE[value_cls]
+    except KeyError:
+        # Check MRO: first match in FILTER_FOR_DBFIELD keys
+        for cls in value_cls.__mro__:
+            if cls in FILTER_FOR_DBFIELD:
+                result = FILTER_FOR_DBFIELD[cls]
+                _FILTER_TYPE_CACHE[value_cls] = result  # cache for fast next lookup
+                return result
+        _FILTER_TYPE_CACHE[value_cls] = FILTER_FOR_DBFIELD_DEFAULT
+        return FILTER_FOR_DBFIELD_DEFAULT
 
 
 def filter_for_column(column):
+    # Only call filter_for_data_type when not a MongoColumn, as previously
     if isinstance(column, MongoColumn):
         return FILTER_FOR_MAP_TYPE.get(column.type, FILTER_FOR_MAP_TYPE_DEFAULT)
     else:
         return filter_for_data_type(column.type)
+
+_FILTER_TYPE_CACHE = {}
