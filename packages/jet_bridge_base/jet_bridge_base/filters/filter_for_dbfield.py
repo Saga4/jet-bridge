@@ -173,9 +173,14 @@ FILTER_FOR_MAP_TYPE_DEFAULT = FILTER_FOR_MAP_TYPE[data_types.CHAR]
 
 
 def filter_for_data_type(value):
-    for data_type, filter_data in FILTER_FOR_DBFIELD.items():
-        if isinstance(value, data_type):
-            return filter_data
+    """
+    Optimized: Use type's MRO for fast class lookup,
+    instead of O(N) loop over all FILTER_FOR_DBFIELD classes.
+    """
+    value_type = type(value)
+    for cls in value_type.__mro__:
+        if cls in FILTER_FOR_DBFIELD:
+            return FILTER_FOR_DBFIELD[cls]
     return FILTER_FOR_DBFIELD_DEFAULT
 
 
