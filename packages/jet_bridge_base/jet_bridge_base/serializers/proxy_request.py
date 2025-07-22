@@ -179,21 +179,38 @@ class ProxyRequestSerializer(Serializer):
         return list(map(lambda x: {'name': x[0], 'value': x[1]}, items.items()))
 
     def interpolate(self, url, headers, query_params, body, pattern, replaces):
-        def replace(str, replaces):
-            for name, value in replaces.items():
-                str = str.replace(pattern % name, value)
-            return str
+        # precompile regex for the possible patterns
+        # e.g. if pattern is '%%%s%%', and replaces = {'NAME': ...}
+        # join all keys to a list of patterns like %NAME%|%ANOTHER% etc
+        # build actual strings using pattern: pattern % name
+        patterns = [re.escape(pattern % k) for k in replaces]
+        if not patterns:
+            # no replacements, return as is
+            return url, headers, query_params, body
 
-        url = replace(url, replaces)
+        regex = re.compile('|'.join(patterns))
+        # lookup map string -> value for fast access
+        lookup = {pattern % k: v for k, v in replaces.items()}
+
+        def repl(m):
+            return lookup[m.group(0)]
+
+        # single pass replacements for each string
+        url = regex.sub(repl, url)
 
         for header in headers:
-            header['value'] = replace(header['value'], replaces)
+            header_value = header['value']
+            # only do work if contains a pattern to replace
+            if regex.search(header_value):
+                header['value'] = regex.sub(repl, header_value)
 
         for query_param in query_params:
-            query_param['value'] = replace(query_param['value'], replaces)
+            param_value = query_param['value']
+            if regex.search(param_value):
+                query_param['value'] = regex.sub(repl, param_value)
 
         if body:
-            body = replace(body, replaces)
+            body = regex.sub(repl, body) if regex.search(body) else body
 
         return url, headers, query_params, body
 
