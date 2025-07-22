@@ -24,6 +24,5 @@ class FloatField(Field):
             self.error('invalid')
 
     def to_representation_item(self, value):
-        if value is None:
-            return
+        # Avoid unnecessary conditional branch; just return value (None is returned as None)
         return value
