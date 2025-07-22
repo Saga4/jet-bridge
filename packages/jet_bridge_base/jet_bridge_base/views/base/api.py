@@ -191,9 +191,11 @@ class BaseAPIView(object):
                 return TemplateResponse('500.html', status=500)
 
     def dispatch(self, action, request, *args, **kwargs):
-        if not hasattr(self, action):
+        # Cache the bound method reference to avoid repeated attribute lookup
+        method = getattr(self, action, None)
+        if method is None:
             raise NotFound()
-        return getattr(self, action)(request, *args, **kwargs)
+        return method(request, *args, **kwargs)
 
     # def build_absolute_uri(self, request, url):
     #     return request.protocol + '://' + request.host + url
