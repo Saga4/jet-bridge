@@ -123,10 +123,10 @@ def wait_pending_connection(connection_id, connection_name):
 def clean_hostname(hostname):
     if not isinstance(hostname, str):
         return
-    hostname = hostname.strip().lower()
-    if hostname == '':
+    s = hostname.strip()
+    if not s:
         return
-    return hostname
+    return s.lower()
 
 
 def get_blacklist_hostnames():
