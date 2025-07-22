@@ -124,13 +124,13 @@ def get_model_field_lookups_type_relation_type(self, MappedBase, mapper, column_
     if not with_relations:
         return
 
-    for relationship in self.get_model_relationships(MappedBase, mapper):
-        if relationship['direction'] != MANYTOONE or relationship['local_column_name'] != column_name:
-            continue
-
-        relation_mapper = relationship['related_mapper']
-        lookups_type = self.get_model_lookups_type(MappedBase, relation_mapper, depth + 1)
-        return lookups_type()
+    get_relationships = self.get_model_relationships
+    relationships = get_relationships(MappedBase, mapper)
+    for relationship in relationships:
+        # Match MANYTOONE direction and correct local column faster
+        if relationship['direction'] is MANYTOONE and relationship['local_column_name'] == column_name:
+            lookups_type = self.get_model_lookups_type(MappedBase, relationship['related_mapper'], depth + 1)
+            return lookups_type()
 
 
 def get_model_relationship_lookups_type_relation_type(self, MappedBase, relationship, with_relations, depth):
