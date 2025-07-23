@@ -56,10 +56,11 @@ class GenericAPIView(APIView):
         return obj
 
     def get_filter(self, request, *args, **kwargs):
-        filter_class = self.get_filter_class(request)
+        filter_class = self.filter_class  # Was: self.get_filter_class(request)
         if not filter_class:
             return
-        kwargs['context'] = self.filter_context()
+        # Inline filter_context: return {'handler': self}
+        kwargs['context'] = {'handler': self}
         return filter_class(*args, **kwargs)
 
     def get_filter_class(self, request):
@@ -67,7 +68,6 @@ class GenericAPIView(APIView):
 
     def filter_context(self):
         return {
-            # 'request': self.request,
             'handler': self
         }
 
