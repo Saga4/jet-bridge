@@ -18,11 +18,21 @@ class MongoQueryset(object):
     _limit = None
     _sort = None
 
-    def __init__(self, session, name, select=None, whereclause=None, joins=None, search=None, offset=None, limit=None, sort=None):
+    def __init__(
+        self, 
+        session, 
+        name,
+        select=None, 
+        whereclause=None, 
+        joins=None, 
+        search=None, 
+        offset=None, 
+        limit=None, 
+        sort=None
+    ):
         self.session = session
-        self.db = session.db
         self.name = name
-        self.query = self.db[self.name]
+        self.query = session.db[name]
         self.select = select
         self.whereclause = whereclause
         self._joins = joins
@@ -40,7 +50,10 @@ class MongoQueryset(object):
             return value
 
     def get_column_path(self, column):
-        return '{}.{}'.format(column.table.name, column.name) if column.table.name != self.name else column.name
+        # Use f-string and identity comparison for likely performance benefit.
+        if column.table.name is self.name:
+            return column.name
+        return f'{column.table.name}.{column.name}'
 
     def get_empty(self):
         return {
