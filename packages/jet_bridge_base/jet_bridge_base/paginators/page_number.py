@@ -91,8 +91,11 @@ class PageNumberPagination(Pagination):
         return self.default_page_size
 
     def has_next(self):
-        pages_count = self.get_pages_count()
-        return self.page_number < pages_count if pages_count is not None else None
+        # Avoids recomputing pages_count
+        if self.count is None:
+            return None
+        pages_count = -(-self.count // self.page_size)
+        return self.page_number < pages_count
 
     def has_next_potential(self, data):
         has_next = self.has_next()
