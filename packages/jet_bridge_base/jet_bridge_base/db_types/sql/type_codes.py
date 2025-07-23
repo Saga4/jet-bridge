@@ -9,42 +9,35 @@ def fetch_postgresql_type_code_to_sql_type(session):
 
     result = {}
 
+    # Precompile regexes for better performance
+    strip_array_re = re.compile(r"\[\]$")
+    strip_parenthesis_re = re.compile(r"\(.*\)")
+
     try:
         types_cursor = session.execute('''
             SELECT 
-                pg_catalog.format_type(oid, NULL),
+                pg_catalog.format_type(oid, NULL) AS format_type,
                 oid 
             FROM 
                 pg_type
         ''')
 
         for pg_type in types_cursor:
-            # Copied from:
-            # def _get_column_info
-            # site-packages/sqlalchemy/dialects/postgresql/base.py:3716
-
             type_code = pg_type['oid']
             format_type = pg_type['format_type']
 
-            def _handle_array_type(attype):
-                return (
-                    # strip '[]' from integer[], etc.
-                    re.sub(r"\[\]$", "", attype),
-                    attype.endswith("[]"),
-                )
-
-            # strip (*) from character varying(5), timestamp(5)
-            # with time zone, geometry(POLYGON), etc.
-            attype = re.sub(r"\(.*\)", "", format_type)
-
-            # strip '[]' from integer[], etc. and check if an array
-            attype, is_array = _handle_array_type(attype)
+            # Fast-path: only regex if needed for array or parenthesis
+            attype = format_type
+            if '(' in attype:
+                attype = strip_parenthesis_re.sub("", attype)
+            is_array = attype.endswith("[]")
+            if is_array:
+                attype = strip_array_re.sub("", attype)
 
             if attype.startswith('interval'):
                 attype = 'interval'
 
             sql_type = ischema_names.get(attype)
-
             if sql_type:
                 result[type_code] = sql_type
 
