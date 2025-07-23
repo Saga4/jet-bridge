@@ -34,6 +34,9 @@ class TableSerializer(Serializer):
     data_source_name_plural = fields.CharField(required=False)
 
     def validate(self, attrs):
-        if not any(map(lambda x: x.get('primary_key'), attrs['columns'])):
-            raise ValidationError('No primary key specified')
-        return attrs
+        # Optimization: Use a simple for loop to short-circuit and avoid creating intermediate function/lambda and list,
+        # which is faster for finding if any column has primary_key
+        for column in attrs['columns']:
+            if column.get('primary_key'):
+                return attrs
+        raise ValidationError('No primary key specified')
