@@ -186,28 +186,42 @@ class MongoQueryset(object):
                              sort=self._sort)
 
     def get_filters(self):
-        filters = []
+        # Build the filters list as efficiently as possible
+        has_where = bool(self.whereclause)
+        has_search = self._search is not None
 
-        if self.whereclause:
-            filters.extend(self.whereclause)
-
-        if self._search is not None:
-            filters.append({'$text': {'$search': self._search}})
-
-        if len(filters) > 1:
-            return {'$and': filters}
-        elif len(filters) == 1:
-            return filters[0]
-        else:
+        if not has_where and not has_search:
             return {}
+
+        if has_where and has_search:
+            return {
+                '$and': [
+                    *(self.whereclause if self.whereclause else []),
+                    {'$text': {'$search': self._search}}
+                ]
+            }
+        elif has_where:
+            if len(self.whereclause) == 1:
+                return self.whereclause[0]
+            return {'$and': list(self.whereclause)}
+        else:
+            return {'$text': {'$search': self._search}}
 
     def get_aggregate_pipeline(self, limit=None):
         aggregate = []
 
-        if self._joins:
-            for model, operator in self._joins:
+        joins = self._joins
+        selects = self.select
+        offset = self._offset
+        pipeline_limit = limit if limit is not None else self._limit
+        sort = self._sort
+
+        # Fast path: handle joins without overhead
+        if joins:
+            append = aggregate.append
+            for model, operator in joins:
                 mapper = mongo_inspect(model)
-                aggregate.append({'$lookup': {
+                append({'$lookup': {
                     'from': mapper.selectable.name,
                     'localField': operator.rhs.name,
                     'foreignField': operator.lhs.name,
@@ -218,19 +232,19 @@ class MongoQueryset(object):
         if filters:
             aggregate.append({'$match': filters})
 
-        if self._sort:
-            aggregate.append({'$sort': dict(self._sort)})
+        if sort:
+            # If sort is already a dict, just use it, else convert from list of tuples
+            aggregate.append({'$sort': dict(sort)})
 
-        if self._offset:
-            aggregate.append({'$skip': self._offset})
+        if offset:
+            aggregate.append({'$skip': offset})
 
-        if limit is not None:
-            aggregate.append({'$limit': limit})
-        elif self._limit:
-            aggregate.append({'$limit': self._limit})
+        if pipeline_limit:
+            aggregate.append({'$limit': pipeline_limit})
 
-        if self.select:
-            aggregate.append({'$project': dict(map(lambda x: (x.name, 1), self.select))})
+        if selects:
+            # Avoid lambda/map and do direct dict comprehension for efficiency
+            aggregate.append({'$project': {x.name: 1 for x in selects}})
 
         return aggregate
 
