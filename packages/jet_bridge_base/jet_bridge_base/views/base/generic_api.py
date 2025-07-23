@@ -25,34 +25,43 @@ class GenericAPIView(APIView):
         raise NotImplementedError
 
     def get_object(self, request):
-        queryset = self.filter_queryset(request, self.get_queryset(request))
+        # Reduce method calls and object creation by caching lookups and simplifying flow
         lookup_url_kwarg = self.lookup_url_kwarg or 'pk'
+        path_kwargs = request.path_kwargs
 
-        if lookup_url_kwarg not in request.path_kwargs:
+        if lookup_url_kwarg not in path_kwargs:
             raise AssertionError()
 
         model = self.get_model(request)
         lookup_field = self.get_model_lookup_field(request)
         model_field = getattr(model, lookup_field)
+        lookup_value = path_kwargs[lookup_url_kwarg]
 
+        # Minimize cost of double call to get_queryset and filter_queryset
+        queryset = self.get_queryset(request)
+        filter_instance = self.get_filter(request)
+        if filter_instance:
+            queryset = filter_instance.filter_queryset(request, queryset)
+
+        # Cache column data type and SQLA operator
+        data_type = get_column_data_type(model_field)
         try:
-            field_lookup = getattr(model_field, '__eq__')
-
-            lookup_value = request.path_kwargs[lookup_url_kwarg]
-            data_type = get_column_data_type(model_field)
+            field_lookup = model_field.__eq__
             field = data_type(context={'model_field': model_field})
             lookup_value = field.to_internal_value(lookup_value)
-
+            # Use SQLAlchemy filter more efficiently
             obj = queryset.filter(field_lookup(lookup_value)).first()
         except SQLAlchemyError:
-            queryset.session.rollback()
+            # Only rollback if actually needed
+            session = getattr(queryset, 'session', None)
+            if session is not None:
+                session.rollback()
             raise
 
         if obj is None:
             raise NotFound
 
         self.check_object_permissions(request, obj)
-
         return obj
 
     def get_filter(self, request, *args, **kwargs):
