@@ -12,12 +12,17 @@ def fetch_postgresql_type_code_to_sql_type(session):
     try:
         types_cursor = session.execute('''
             SELECT 
-                pg_catalog.format_type(oid, NULL),
+                pg_catalog.format_type(oid, NULL) AS format_type,
                 oid 
             FROM 
                 pg_type
         ''')
 
+        ischema_lookup = ischema_names  # Local variable for faster access
+        paren_re = _paren_re
+        array_re = _array_re
+
+        # Inline the hot functions for speed
         for pg_type in types_cursor:
             # Copied from:
             # def _get_column_info
@@ -26,28 +31,27 @@ def fetch_postgresql_type_code_to_sql_type(session):
             type_code = pg_type['oid']
             format_type = pg_type['format_type']
 
-            def _handle_array_type(attype):
-                return (
-                    # strip '[]' from integer[], etc.
-                    re.sub(r"\[\]$", "", attype),
-                    attype.endswith("[]"),
-                )
+            attype = format_type
 
-            # strip (*) from character varying(5), timestamp(5)
-            # with time zone, geometry(POLYGON), etc.
-            attype = re.sub(r"\(.*\)", "", format_type)
+            # Fast check if '(', avoid regex unless needed
+            if '(' in attype:
+                # strip (*) from character varying(5), timestamp(5)... etc.
+                attype = paren_re.sub("", attype)
 
-            # strip '[]' from integer[], etc. and check if an array
-            attype, is_array = _handle_array_type(attype)
+            # Fast check for arrays
+            if attype.endswith('[]'):
+                # strip '[]' from integer[], etc.
+                attype = array_re.sub("", attype)
+                # (We don't use is_array further, so not storing)
 
             if attype.startswith('interval'):
                 attype = 'interval'
 
-            sql_type = ischema_names.get(attype)
-
+            sql_type = ischema_lookup.get(attype)
             if sql_type:
                 result[type_code] = sql_type
 
+        # session.commit() not required after only SELECTs, but kept per original intent
         session.commit()
     except SQLAlchemyError:
         session.rollback()
@@ -58,3 +62,7 @@ def fetch_postgresql_type_code_to_sql_type(session):
 def fetch_type_code_to_sql_type(session):
     if sql_get_session_engine(session) == 'postgresql':
         return fetch_postgresql_type_code_to_sql_type(session)
+
+_paren_re = re.compile(r"\(.*\)")
+
+_array_re = re.compile(r"\[\]$")
