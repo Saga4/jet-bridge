@@ -147,6 +147,7 @@ class MongoQueryset(object):
         return result
 
     def limit(self, limit):
+        # Returns a cloned instance with updated _limit.
         result = self.clone()
         result._limit = limit
         return result
@@ -181,9 +182,18 @@ class MongoQueryset(object):
         return self._sort
 
     def clone(self):
-        return MongoQueryset(self.session, self.name, select=self.select, whereclause=self.whereclause,
-                             joins=self._joins, search=self._search, offset=self._offset, limit=self._limit,
-                             sort=self._sort)
+        # Avoid kwargs overhead by positional call.
+        return MongoQueryset(
+            self.session,
+            self.name,
+            self.select,
+            self.whereclause,
+            self._joins,
+            self._search,
+            self._offset,
+            self._limit,
+            self._sort
+        )
 
     def get_filters(self):
         filters = []
