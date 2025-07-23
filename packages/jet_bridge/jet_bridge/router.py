@@ -28,49 +28,50 @@ class Router(object):
     urls = []
 
     def add_handler(self, view, url, actions):
-        class ActionHandler(view):
-            pass
+        # Prepare action-methods in advance to avoid repeated closure creation in loop
+        action_method_cache = {}
+
+        def create_action_method(action):
+            @gen.coroutine
+            def action_method(inner_self, *args, **kwargs):
+                request = inner_self.get_request()
+                request.action = action
+
+                def execute():
+                    inner_self.before_dispatch(request)
+                    try:
+                        result = inner_self.view.dispatch(action, request, *args, **kwargs)
+                    finally:
+                        inner_self.after_dispatch(request)
+                    return result
+
+                try:
+                    response = yield as_future(execute)
+                    yield inner_self.write_response(response)
+                except Exception:
+                    exc_type, exc, traceback = sys.exc_info()
+                    response = inner_self.view.error_response(request, exc_type, exc, traceback)
+                    yield inner_self.write_response(response)
+                finally:
+                    raise gen.Return()
+            return action_method
 
         for method, method_action in actions.items():
-            def create_action_method(action):
-                @gen.coroutine
-                def action_method(inner_self, *args, **kwargs):
-                    request = inner_self.get_request()
-                    request.action = action
-
-                    def execute():
-                        inner_self.before_dispatch(request)
-
-                        try:
-                            result = inner_self.view.dispatch(action, request, *args, **kwargs)
-                        finally:
-                            inner_self.after_dispatch(request)
-
-                        return result
-
-                    try:
-                        response = yield as_future(execute)
-                        yield inner_self.write_response(response)
-                    except Exception:
-                        exc_type, exc, traceback = sys.exc_info()
-                        response = inner_self.view.error_response(request, exc_type, exc, traceback)
-                        yield inner_self.write_response(response)
-                    finally:
-                        raise gen.Return()
-
-                return action_method
-
-            func = create_action_method(method_action)
-            setattr(ActionHandler, method, func)
-
+            # Cache methods, no repeated create_action_method closure
+            if method_action not in action_method_cache:
+                action_method_cache[method_action] = create_action_method(method_action)
+        
+        # Dynamically build ActionHandler with all methods attached at once
+        attrs = {method: action_method_cache[method_action] for method, method_action in actions.items()}
+        ActionHandler = type("ActionHandler", (view,), attrs)
         self.urls.append((url, ActionHandler))
 
     def add_route_actions(self, view, route, prefix):
+        # Use efficient dict comprehension to filter actions
         viewset = view.view
-        actions = route['method_mapping']
-        actions = dict(filter(lambda x: hasattr(viewset, x[1]), actions.items()))
+        actions = {k: v for k, v in route['method_mapping'].items() if hasattr(viewset, v)}
 
-        if len(actions) == 0:
+        if not actions:
             return
 
         url = '{}{}'.format(prefix, route['path'])
