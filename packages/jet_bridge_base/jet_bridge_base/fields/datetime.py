@@ -4,6 +4,7 @@ import six
 
 from jet_bridge_base.db import get_default_timezone
 from jet_bridge_base.fields.field import Field
+from functools import lru_cache
 
 
 def get_timezone_from_str(value):
@@ -14,14 +15,23 @@ def get_timezone_from_str(value):
 
 
 def datetime_apply_default_timezone(value, request):
+    # Fast exit if already aware
     if value.tzinfo is not None:
         return value
 
-    default_timezone = get_default_timezone(request) if request else None
-    if default_timezone:
-        return value.replace(tzinfo=default_timezone)
+    # Only look up timezone if request is not None
+    if request:
+        default_timezone = _get_cached_default_timezone(request)
+        if default_timezone:
+            return value.replace(tzinfo=default_timezone)
 
     return value
+
+
+# New helper: Cache timezone lookups to speed up repeated calls.
+@lru_cache(maxsize=64)
+def _get_cached_default_timezone(request):
+    return get_default_timezone(request)
 
 
 class DateTimeField(Field):
