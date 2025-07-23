@@ -69,11 +69,13 @@ class PageNumberPagination(Pagination):
         ]))
 
     def get_page_number(self, request, handler):
+        param = self.page_query_param
         try:
-            result = int(request.get_argument(self.page_query_param))
-            return max(result, 1)
+            value = request.get_argument(param)
+            result = int(value)
         except (MissingArgumentError, ValueError):
             return 1
+        return result if result >= 1 else 1
 
     def get_page_size(self, request, handler):
         if self.page_size_query_param:
