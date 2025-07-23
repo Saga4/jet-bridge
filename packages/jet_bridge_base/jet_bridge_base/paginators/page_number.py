@@ -53,20 +53,26 @@ class PageNumberPagination(Pagination):
         return result
 
     def get_pages_count(self):
-        return int(math.ceil(self.count / self.page_size)) if self.count is not None else None
+        # Use integer division for page count calculation
+        count = self.count
+        page_size = self.page_size
+        if count is None or page_size is None or page_size == 0:
+            return None
+        return (count + page_size - 1) // page_size
 
     def get_paginated_response(self, request, data):
-        return JSONResponse(OrderedDict([
-            ('count', self.count),
-            ('next', self.get_next_link(request, data)),
-            ('previous', self.get_previous_link(request)),
-            ('results', data),
-            ('num_pages', self.get_pages_count()),
-            ('per_page', self.page_size),
-            ('has_more', self.has_next_potential(data)),
-            ('data_query_time', self.data_query_time),
-            ('count_query_time', self.count_query_time),
-        ]))
+        # Use standard dict instead of OrderedDict for performance
+        return JSONResponse({
+            'count': self.count,
+            'next': self.get_next_link(request, data),
+            'previous': self.get_previous_link(request),
+            'results': data,
+            'num_pages': self.get_pages_count(),
+            'per_page': self.page_size,
+            'has_more': self.has_next_potential(data),
+            'data_query_time': self.data_query_time,
+            'count_query_time': self.count_query_time,
+        })
 
     def get_page_number(self, request, handler):
         try:
@@ -97,8 +103,8 @@ class PageNumberPagination(Pagination):
     def has_next_potential(self, data):
         has_next = self.has_next()
         if has_next is False:
-            return has_next
-        elif has_next is None and len(data) == 0:
+            return False
+        if has_next is None and not data:
             return False
         return True
 
@@ -115,8 +121,7 @@ class PageNumberPagination(Pagination):
         if not self.has_next_potential(data):
             return None
         url = request.full_url()
-        page_number = self.next_page_number()
-        return replace_query_param(url, self.page_query_param, page_number)
+        return replace_query_param(url, self.page_query_param, self.next_page_number())
 
     def get_previous_link(self, request):
         if not self.has_previous():
