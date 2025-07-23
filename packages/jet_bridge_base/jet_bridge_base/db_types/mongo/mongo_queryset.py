@@ -181,9 +181,18 @@ class MongoQueryset(object):
         return self._sort
 
     def clone(self):
-        return MongoQueryset(self.session, self.name, select=self.select, whereclause=self.whereclause,
-                             joins=self._joins, search=self._search, offset=self._offset, limit=self._limit,
-                             sort=self._sort)
+        # Direct instantiation without keyword packing to remove call overhead
+        return MongoQueryset(
+            self.session,
+            self.name,
+            self.select,
+            self.whereclause,
+            self._joins,
+            self._search,
+            self._offset,
+            self._limit,
+            self._sort
+        )
 
     def get_filters(self):
         filters = []
