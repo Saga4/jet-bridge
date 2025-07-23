@@ -32,12 +32,16 @@ class MongoQueryset(object):
         self._sort = sort
 
     def to_internal_value(self, value, column):
-        if isinstance(value, bytes) and column.params.get('type') == 'object_id':
-            return ObjectId(value)
-        elif isinstance(value, list) and all(map(lambda x: isinstance(x, bytes), value)) and column.params.get('type') == 'object_id':
-            return list(map(lambda x: ObjectId(x), value))
-        else:
-            return value
+        col_type = column.params.get('type')
+        if col_type == 'object_id':
+            if isinstance(value, bytes):
+                return ObjectId(value)
+            elif isinstance(value, list) and value and isinstance(value[0], bytes):
+                # Perf: avoid repeated isinstance checks for all if empty or not all are bytes
+                # Only convert if every element is bytes
+                if all(isinstance(x, bytes) for x in value):
+                    return [ObjectId(x) for x in value]
+        return value
 
     def get_column_path(self, column):
         return '{}.{}'.format(column.table.name, column.name) if column.table.name != self.name else column.name
