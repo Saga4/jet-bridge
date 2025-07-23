@@ -186,17 +186,25 @@ class MongoQueryset(object):
                              sort=self._sort)
 
     def get_filters(self):
-        filters = []
+        """Optimized to construct the filters list with minimal resizes and checks."""
+        where = self.whereclause
+        search = self._search
 
-        if self.whereclause:
-            filters.extend(self.whereclause)
+        if where and search is not None:
+            # Merge whereclause and search in one go, don't use extend/append loop
+            filters = list(where)
+            filters.append({'$text': {'$search': search}})
+        elif where:
+            filters = list(where)
+        elif search is not None:
+            filters = [{'$text': {'$search': search}}]
+        else:
+            filters = []
 
-        if self._search is not None:
-            filters.append({'$text': {'$search': self._search}})
-
-        if len(filters) > 1:
+        filters_len = len(filters)
+        if filters_len > 1:
             return {'$and': filters}
-        elif len(filters) == 1:
+        elif filters_len == 1:
             return filters[0]
         else:
             return {}
