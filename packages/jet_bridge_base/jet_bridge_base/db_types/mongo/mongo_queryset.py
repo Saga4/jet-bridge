@@ -20,9 +20,11 @@ class MongoQueryset(object):
 
     def __init__(self, session, name, select=None, whereclause=None, joins=None, search=None, offset=None, limit=None, sort=None):
         self.session = session
-        self.db = session.db
+        db = session.db
+        self.db = db
         self.name = name
-        self.query = self.db[self.name]
+        # Avoid repeating dictionary lookup
+        self.query = db[name]
         self.select = select
         self.whereclause = whereclause
         self._joins = joins
@@ -181,9 +183,12 @@ class MongoQueryset(object):
         return self._sort
 
     def clone(self):
-        return MongoQueryset(self.session, self.name, select=self.select, whereclause=self.whereclause,
-                             joins=self._joins, search=self._search, offset=self._offset, limit=self._limit,
-                             sort=self._sort)
+        # All attributes are already present, just copy them across.
+        # No need for explicit keyword arguments.
+        return MongoQueryset(
+            self.session, self.name, self.select, self.whereclause,
+            self._joins, self._search, self._offset, self._limit, self._sort
+        )
 
     def get_filters(self):
         filters = []
