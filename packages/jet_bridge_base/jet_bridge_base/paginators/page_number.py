@@ -95,10 +95,16 @@ class PageNumberPagination(Pagination):
         return self.page_number < pages_count if pages_count is not None else None
 
     def has_next_potential(self, data):
-        has_next = self.has_next()
-        if has_next is False:
-            return has_next
-        elif has_next is None and len(data) == 0:
+        # Avoid calling has_next() (which calls get_pages_count()) twice per request.
+        pages_count = self.get_pages_count()
+        if pages_count is not None:
+            result = self.page_number < pages_count
+            if not result:
+                return result
+            else:
+                return True
+        # pages_count is None:
+        if len(data) == 0:
             return False
         return True
 
